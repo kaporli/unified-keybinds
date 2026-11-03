@@ -104,9 +104,9 @@ bool Generate(const fs::path& aBase)
         std::lock_guard lock(g_mutex);
         g_actions = std::move(actions);
         g_collected = true;
-        Log("Mods group: " + std::to_string(g_actions.size()) + " actions");
+        Log(std::to_string(g_actions.size()) + " actions");
         for (const auto& a : g_actions)
-            Log("  " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"");
+            Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"");
     }
     return true;
 }
@@ -141,28 +141,85 @@ void EnsureCollected()
     t_busy = false;
 }
 
-void ReturnNames(RED4ext::DynArray<RED4ext::CName>* aOut, bool aDefaults)
+enum class NameList
+{
+    Names,
+    Defaults,
+    Groups
+};
+
+void ReturnNames(RED4ext::DynArray<RED4ext::CName>* aOut, NameList aList)
 {
     if (!aOut)
         return;
     EnsureCollected();
     std::lock_guard lock(g_mutex);
     for (const auto& a : g_actions)
-        aOut->PushBack(RED4ext::CName((aDefaults ? a.defaultKey : a.name).c_str()));
+    {
+        std::string value = aList == NameList::Names      ? a.name
+                            : aList == NameList::Defaults ? a.defaultKey
+                                                          : Keybinds::GroupPath(a);
+        aOut->PushBack(RED4ext::CName(value.c_str()));
+    }
+}
+
+// Translation keys or their texts, in the same order: each section header, then its actions.
+// Entries a mod gave as LocKey# are left out, the game already knows them.
+void ReturnStrings(RED4ext::DynArray<RED4ext::CString>* aOut, bool aKeys)
+{
+    if (!aOut)
+        return;
+    EnsureCollected();
+    std::lock_guard lock(g_mutex);
+    std::string section;
+    for (const auto& a : g_actions)
+    {
+        if (a.section != section)
+        {
+            section = a.section;
+            auto key = Keybinds::SectionKey(a);
+            if (key.rfind("LocKey#", 0) != 0)
+                aOut->PushBack(RED4ext::CString((aKeys ? key : Keybinds::SectionText(a)).c_str()));
+        }
+        auto key = Keybinds::LabelKey(a);
+        if (key.rfind("LocKey#", 0) != 0)
+            aOut->PushBack(RED4ext::CString((aKeys ? key : a.label).c_str()));
+    }
 }
 
 void Native_Names(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
                   int64_t)
 {
     aFrame->code++;
-    ReturnNames(aOut, false);
+    ReturnNames(aOut, NameList::Names);
 }
 
 void Native_Defaults(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
                      int64_t)
 {
     aFrame->code++;
-    ReturnNames(aOut, true);
+    ReturnNames(aOut, NameList::Defaults);
+}
+
+void Native_Groups(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
+                   int64_t)
+{
+    aFrame->code++;
+    ReturnNames(aOut, NameList::Groups);
+}
+
+void Native_LabelKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
+                      int64_t)
+{
+    aFrame->code++;
+    ReturnStrings(aOut, true);
+}
+
+void Native_LabelTexts(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame,
+                       RED4ext::DynArray<RED4ext::CString>* aOut, int64_t)
+{
+    aFrame->code++;
+    ReturnStrings(aOut, false);
 }
 
 void RegisterTypes()
@@ -184,6 +241,24 @@ void PostRegisterTypes()
     defaults->flags = flags;
     defaults->SetReturnType("array:CName");
     rtti->RegisterFunction(defaults);
+
+    auto groups =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_Groups", "ModKeybindsMenu_Groups", &Native_Groups);
+    groups->flags = flags;
+    groups->SetReturnType("array:CName");
+    rtti->RegisterFunction(groups);
+
+    auto keys = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_LabelKeys", "ModKeybindsMenu_LabelKeys",
+                                                 &Native_LabelKeys);
+    keys->flags = flags;
+    keys->SetReturnType("array:String");
+    rtti->RegisterFunction(keys);
+
+    auto texts = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_LabelTexts", "ModKeybindsMenu_LabelTexts",
+                                                  &Native_LabelTexts);
+    texts->flags = flags;
+    texts->SetReturnType("array:String");
+    rtti->RegisterFunction(texts);
 }
 } // namespace
 

@@ -12,16 +12,32 @@ struct Action
 {
     std::string name;       // overridableUI name, also the settings var name
     std::string defaultKey; // key from the mod's input file, e.g. IK_L
-    std::string label;      // text shown in the key bindings menu
+    std::string section;    // mod name, one menu section per mod
+    std::string label;      // action text shown in the menu
 };
+
+// The menu shows display names through the game's translation system, so options.json gets
+// keys and the scripts register the text for them with Codeware.
+inline constexpr const char* kLabelKeyPrefix = "ModKeybindsMenu-";
+
+// Translation key for an action's label.
+std::string LabelKey(const Action& aAction);
+
+// Settings group of the action's section, e.g. /key_bindings/SettingsModLetThereBeFlight.
+std::string GroupPath(const Action& aAction);
+
+// Translation key and text of the action's section header.
+std::string SectionKey(const Action& aAction);
+std::string SectionText(const Action& aAction);
 
 using LogFn = std::function<void(const std::string&)>;
 
 // Mod-added actions: overridableUI names in Input Loader's merged mappings that the base
 // mappings and the base options.json don't already have. Gamepad-only actions are skipped.
+// Sorted by section.
 std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::string& aBaseOptions, const LogFn& aLog);
 
-// aBaseOptions with the Mods group added. Any Mods group already in it is replaced.
+// aBaseOptions with one group per section added. Groups from an older run are replaced.
 std::string MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions);
 
 // "vehicleFlightLinearBrake" -> "Vehicle Flight Linear Brake"

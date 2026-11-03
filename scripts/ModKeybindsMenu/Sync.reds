@@ -1,45 +1,38 @@
 module ModKeybindsMenu
 
-// Keeps the Controls > Key Bindings > Mods entries and Mod Settings key options in sync.
+// Keeps the mod sections in Controls > Key Bindings and Mod Settings key options in sync.
 // Mod Settings applies its saved key at startup, so it is the source when a session starts.
 // After that, a change on either side is copied to the other.
 
 public class ModKeybindsSystem extends ScriptableSystem {
-  private let m_listener: ref<ModKeybindsListener>;
-
-  private func OnAttach() -> Void {
-    this.m_listener = new ModKeybindsListener();
-    this.m_listener.Start(this.GetGameInstance());
-  }
-
-  private func OnDetach() -> Void {
-    if IsDefined(this.m_listener) {
-      this.m_listener.Stop();
-    }
-  }
-}
-
-public class ModKeybindsListener extends ConfigVarListener {
-  private let m_game: GameInstance;
+  private let m_listeners: array<ref<ModKeybindsListener>>;
   private let m_busy: Bool;
 
-  public func Start(game: GameInstance) -> Void {
-    this.m_game = game;
+  private func OnAttach() -> Void {
+    let seen: array<CName>;
+    for group in ModKeybindsMenu_Groups() {
+      if !ArrayContains(seen, group) {
+        ArrayPush(seen, group);
+        let listener = new ModKeybindsListener();
+        listener.Start(this, group);
+        ArrayPush(this.m_listeners, listener);
+      }
+    }
     this.CopyModSettingsToMenu();
-    this.Register(n"/key_bindings/SettingsMods");
     ModSettings.RegisterListenerToModifications(this);
   }
 
-  public func Stop() -> Void {
+  private func OnDetach() -> Void {
     ModSettings.UnregisterListenerToModifications(this);
+    ArrayClear(this.m_listeners);
   }
 
-  private func MenuVar(name: CName) -> ref<ConfigVarName> {
-    let group = GameInstance.GetSettingsSystem(this.m_game).GetGroup(n"/key_bindings/SettingsMods");
-    if !IsDefined(group) {
+  private func MenuVar(group: CName, name: CName) -> ref<ConfigVarName> {
+    let settings = GameInstance.GetSettingsSystem(this.GetGameInstance()).GetGroup(group);
+    if !IsDefined(settings) {
       return null;
     }
-    return group.GetVar(name) as ConfigVarName;
+    return settings.GetVar(name) as ConfigVarName;
   }
 
   private func ModSettingsVar(name: CName) -> ref<ModConfigVarKeyBinding> {
@@ -68,13 +61,14 @@ public class ModKeybindsListener extends ConfigVarListener {
       return;
     }
     this.m_busy = true;
-    let settings = GameInstance.GetSettingsSystem(this.m_game);
-    let changed = false;
+    let settings = GameInstance.GetSettingsSystem(this.GetGameInstance());
     let names = ModKeybindsMenu_Names();
     let defaults = ModKeybindsMenu_Defaults();
+    let groups = ModKeybindsMenu_Groups();
+    let changed = false;
     let i = 0;
     while i < ArraySize(names) {
-      let menu = this.MenuVar(names[i]);
+      let menu = this.MenuVar(groups[i], names[i]);
       let kb = this.ModSettingsVar(names[i]);
       if IsDefined(menu) {
         // The game has no default for added entries, so a new entry starts as None
@@ -98,12 +92,12 @@ public class ModKeybindsListener extends ConfigVarListener {
     this.m_busy = false;
   }
 
-  protected cb func OnVarModified(groupPath: CName, varName: CName, varType: ConfigVarType, reason: ConfigChangeReason) {
-    if this.m_busy || !Equals(reason, ConfigChangeReason.Accepted) || !Equals(groupPath, n"/key_bindings/SettingsMods") {
+  public func OnMenuChanged(group: CName, name: CName) -> Void {
+    if this.m_busy {
       return;
     }
-    let menu = this.MenuVar(varName);
-    let kb = this.ModSettingsVar(varName);
+    let menu = this.MenuVar(group, name);
+    let kb = this.ModSettingsVar(name);
     if IsDefined(menu) && IsDefined(kb) && NotEquals(menu.GetValue(), kb.GetValueName()) {
       this.m_busy = true;
       kb.SetValueName(menu.GetValue());
@@ -114,5 +108,23 @@ public class ModKeybindsListener extends ConfigVarListener {
 
   public func OnModSettingsChange() -> Void {
     this.CopyModSettingsToMenu();
+  }
+}
+
+// Watches one mod section of the Key Bindings menu.
+public class ModKeybindsListener extends ConfigVarListener {
+  private let m_system: wref<ModKeybindsSystem>;
+  private let m_group: CName;
+
+  public func Start(system: ref<ModKeybindsSystem>, group: CName) -> Void {
+    this.m_system = system;
+    this.m_group = group;
+    this.Register(group);
+  }
+
+  protected cb func OnVarModified(groupPath: CName, varName: CName, varType: ConfigVarType, reason: ConfigChangeReason) {
+    if Equals(reason, ConfigChangeReason.Accepted) && Equals(groupPath, this.m_group) && IsDefined(this.m_system) {
+      this.m_system.OnMenuChanged(groupPath, varName);
+    }
   }
 }

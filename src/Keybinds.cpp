@@ -15,7 +15,8 @@ using json = nlohmann::ordered_json;
 
 namespace
 {
-constexpr const char* kGroup = "/key_bindings/SettingsMods";
+// Every group this mod adds starts with this, so old copies are easy to find and replace.
+constexpr const char* kGroupPrefix = "/key_bindings/SettingsMod";
 
 struct Button
 {
@@ -186,10 +187,18 @@ std::map<std::string, std::string> ReadSources(const fs::path& aRoot)
     return out;
 }
 
-// Optional labels shipped by mods: r6/config/modkeybinds/*.json, {"overridableUI": "Label"}.
-std::map<std::string, std::string> ReadLabelFiles(const fs::path& aRoot, const Keybinds::LogFn& aLog)
+struct LabelFiles
 {
-    std::map<std::string, std::string> out;
+    std::map<std::string, std::string> labels;   // overridableUI -> action label
+    std::map<std::string, std::string> sections; // overridableUI -> section (mod) name
+};
+
+// Optional files shipped by mods: r6/config/modkeybinds/*.json,
+// {"_section": "Mod Name", "overridableUI": "Action label", ...}. "_section" names the
+// menu section of every action listed in that file.
+LabelFiles ReadLabelFiles(const fs::path& aRoot, const Keybinds::LogFn& aLog)
+{
+    LabelFiles out;
     std::error_code ec;
     auto dir = aRoot / "r6" / "config" / "modkeybinds";
     if (!fs::is_directory(dir, ec))
@@ -205,10 +214,14 @@ std::map<std::string, std::string> ReadLabelFiles(const fs::path& aRoot, const K
             aLog("Skipped label file (not a JSON object): " + entry.path().filename().string());
             continue;
         }
+        std::string section = data.value("_section", "");
         for (const auto& [name, label] : data.items())
         {
-            if (label.is_string())
-                out[name] = label.get<std::string>();
+            if (name == "_section" || !label.is_string())
+                continue;
+            out.labels[name] = label.get<std::string>();
+            if (!section.empty())
+                out.sections[name] = section;
         }
     }
     return out;
@@ -240,6 +253,13 @@ std::string ActionName(const std::string& aName, const std::string& aSource)
     return Join(words);
 }
 
+bool IsOurGroup(const std::string& aGroup)
+{
+    return aGroup.rfind(kGroupPrefix, 0) == 0;
+}
+
+// Option names in the base options.json, leaving out our own groups so a stale copy
+// doesn't hide actions.
 std::set<std::string> OptionNames(const json& aOptions)
 {
     std::set<std::string> out;
@@ -247,7 +267,7 @@ std::set<std::string> OptionNames(const json& aOptions)
         return out;
     for (const auto& group : aOptions["options"])
     {
-        if (!group.contains("options"))
+        if (!group.contains("options") || IsOurGroup(group.value("group_name", "")))
             continue;
         for (const auto& opt : group["options"])
         {
@@ -257,7 +277,44 @@ std::set<std::string> OptionNames(const json& aOptions)
     }
     return out;
 }
+
+// Letters and digits only, for use in a group path and a translation key.
+std::string Slug(const std::string& aText)
+{
+    std::string out;
+    for (unsigned char c : aText)
+    {
+        if (std::isalnum(c))
+            out += static_cast<char>(c);
+    }
+    return out.empty() ? "Other" : out;
+}
 } // namespace
+
+std::string Keybinds::LabelKey(const Action& aAction)
+{
+    // Labels a mod gave as LocKey# are already translation keys.
+    if (aAction.label.rfind("LocKey#", 0) == 0)
+        return aAction.label;
+    return kLabelKeyPrefix + aAction.name;
+}
+
+std::string Keybinds::GroupPath(const Action& aAction)
+{
+    return kGroupPrefix + Slug(aAction.section);
+}
+
+std::string Keybinds::SectionKey(const Action& aAction)
+{
+    if (aAction.section.rfind("LocKey#", 0) == 0)
+        return aAction.section;
+    return std::string(kLabelKeyPrefix) + "Section-" + Slug(aAction.section);
+}
+
+std::string Keybinds::SectionText(const Action& aAction)
+{
+    return "Mods: " + aAction.section;
+}
 
 std::string Keybinds::Humanize(const std::string& aText)
 {
@@ -280,20 +337,9 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
     auto base = ReadMappings(aRoot / "r6" / "config" / "inputUserMappings.xml");
     auto baseOptions = json::parse(aBaseOptions, nullptr, false);
     auto listed = baseOptions.is_discarded() ? std::set<std::string>{} : OptionNames(baseOptions);
-    // Drop our own group so a stale copy doesn't hide actions.
-    if (!baseOptions.is_discarded() && baseOptions.contains("options"))
-    {
-        for (const auto& group : baseOptions["options"])
-        {
-            if (group.value("group_name", "") != kGroup || !group.contains("options"))
-                continue;
-            for (const auto& opt : group["options"])
-                listed.erase(opt.value("name", ""));
-        }
-    }
 
     auto sources = ReadSources(aRoot);
-    auto labels = ReadLabelFiles(aRoot, aLog);
+    auto files = ReadLabelFiles(aRoot, aLog);
 
     std::vector<std::pair<Button, Action>> found;
     for (const auto& [name, button] : merged)
@@ -301,25 +347,28 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         if (base.contains(name) || listed.contains(name) || IsPad(button.id))
             continue;
 
-        auto src = sources.find(name);
-        std::string source = src != sources.end() ? src->second : "";
-        std::string label;
-        if (auto it = labels.find(name); it != labels.end())
-            label = it->second;
-        else if (!source.empty())
-            label = source + ": " + ActionName(name, source);
+        Action action{name, button.id};
+        if (auto it = files.sections.find(name); it != files.sections.end())
+            action.section = it->second;
+        else if (auto src = sources.find(name); src != sources.end())
+            action.section = src->second;
         else
-            label = Humanize(name);
+            action.section = "Other";
 
-        found.push_back({button, Action{name, button.id, label}});
+        if (auto it = files.labels.find(name); it != files.labels.end())
+            action.label = it->second;
+        else if (action.section != "Other")
+            action.label = ActionName(name, action.section);
+        else
+            action.label = Humanize(name);
+
+        found.push_back({button, std::move(action)});
     }
 
-    // Group by mod, keep each mod's own order.
+    // One section per mod, sorted by name; actions keep their mod's own order.
     std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
-        auto sa = a.second.label.substr(0, a.second.label.find(':'));
-        auto sb = b.second.label.substr(0, b.second.label.find(':'));
-        if (sa != sb)
-            return sa < sb;
+        if (a.second.section != b.second.section)
+            return a.second.section < b.second.section;
         return a.first.order < b.first.order;
     });
 
@@ -337,29 +386,35 @@ std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::v
 
     auto& groups = data["groups"];
     auto& options = data["options"];
-    groups.erase(std::remove_if(groups.begin(), groups.end(),
-                                [](const json& g) { return g.value("group_name", "") == kGroup; }),
-                 groups.end());
-    options.erase(std::remove_if(options.begin(), options.end(),
-                                 [](const json& g) { return g.value("group_name", "") == kGroup; }),
-                  options.end());
+    auto ours = [](const json& g) { return IsOurGroup(g.value("group_name", "")); };
+    groups.erase(std::remove_if(groups.begin(), groups.end(), ours), groups.end());
+    options.erase(std::remove_if(options.begin(), options.end(), ours), options.end());
 
-    if (aActions.empty())
-        return data.dump(4);
-
-    int top = 0;
+    int order = 0;
     for (const auto& g : groups)
     {
         if (g.value("group_name", "").rfind("/key_bindings/", 0) == 0)
-            top = std::max(top, g.value("order", 0));
+            order = std::max(order, g.value("order", 0));
     }
-    groups.push_back({{"group_name", kGroup}, {"display_name", "Mods"}, {"order", top + 1}});
 
-    json list = json::array();
-    int order = 0;
+    // Actions arrive sorted by section, so each section is one run.
+    std::string current;
+    std::size_t list = 0;
+    int index = 0;
     for (const auto& a : aActions)
-        list.push_back({{"name", a.name}, {"display_name", a.label}, {"order", order++}, {"is_input", true}});
-    options.push_back({{"group_name", kGroup}, {"options", list}});
+    {
+        auto path = GroupPath(a);
+        if (path != current)
+        {
+            current = path;
+            groups.push_back({{"group_name", path}, {"display_name", SectionKey(a)}, {"order", ++order}});
+            options.push_back({{"group_name", path}, {"options", json::array()}});
+            list = options.size() - 1;
+            index = 0;
+        }
+        options[list]["options"].push_back(
+            {{"name", a.name}, {"display_name", LabelKey(a)}, {"order", index++}, {"is_input", true}});
+    }
 
     return data.dump(4);
 }

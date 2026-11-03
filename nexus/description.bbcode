@@ -1,11 +1,11 @@
 [size=5][b]Every mod's keybinds in the game's own Key Bindings menu.[/b][/size]
 
-Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Mod Keybinds Menu adds a [b]Mods[/b] group to Settings > Controls > Key Bindings that lists every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
+Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Mod Keybinds Menu adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
 [size=4][b]Features[/b][/size]
 [list]
-[*]A [b]Mods[/b] group in Settings > Controls > Key Bindings, built at startup from the mods you have installed. Add or remove a mod and the list follows.
-[*]Entries are labeled by mod and action, for example [i]"Let There Be Flight: Vehicle Flight Linear Brake"[/i] or [i]"Stash QoL: Transfer Max Quantity"[/i].
+[*]One section per mod in Settings > Controls > Key Bindings, for example [i]"Mods: Let There Be Flight"[/i] or [i]"Mods: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.
+[*]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].
 [*]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 [*]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.
 [*]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.
@@ -17,6 +17,7 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/1511]redscript[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] (optional, for keeping keys in sync with mods that also offer them there)
 [/list]
 
@@ -39,11 +40,12 @@ Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] folder. Optionally delete [i]r
 [size=4][b]For mod authors[/b][/size]
 Your action shows up if it has a [i]<button id="IK_..." overridableUI="yourActionName" />[/i] in an input file loaded by Input Loader. Nothing else is needed.
 
-For a nicer label than the generated one, ship [i]r6/config/modkeybinds/<YourMod>.json[/i]:
+For nicer names than the generated ones, ship [i]r6/config/modkeybinds/<YourMod>.json[/i]:
 [code]{
-  "yourActionName": "Your Mod: Open Menu"
+  "_section": "Your Mod",
+  "yourActionName": "Open Menu"
 }[/code]
-Labels can also be LocKey#... keys.
+[i]_section[/i] names the section for every action in that file. Names can also be LocKey#... keys.
 
 [size=4][b]Source[/b][/size]
 [url=https://github.com/kaporli/mod-keybinds-menu]github.com/kaporli/mod-keybinds-menu[/url] (MIT)
