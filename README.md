@@ -1,8 +1,8 @@
-# Mod Keybinds Menu
+# Native Mod Keybinds
 
 Every mod's keybinds in the game's own Key Bindings menu.
 
-Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Mod Keybinds Menu adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
+Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
 ## Screenshots
 
@@ -86,7 +86,7 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 Needs Visual Studio 2022 Build Tools (C++ workload), CMake and Ninja.
 
 ```
-git clone --recursive https://github.com/kaporli/mod-keybinds-menu
+git clone --recursive https://github.com/kaporli/native-mod-keybinds
 tools\package.ps1
 ```
 

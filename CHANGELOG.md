@@ -2,6 +2,7 @@
 
 ## 1.1.0 (2026-11-03)
 
+- Renamed to Native Mod Keybinds (was Mod Keybinds Menu). Files and folders keep their names, so updating works as before.
 - Lists keys that mods didn't mark as rebindable: any mod `Button` mapping with a single keyboard or mouse key, such as Enhanced Vehicle System's. Key combinations stay out.
 - Fix: a key changed in the menu now applies to the game, including the key shown in the mod's on-screen hints. Before, only keys that also have a Mod Settings option changed.
 - Fix: keys saved in `r6/cache/modkeybinds/keys.json` were not read back, so keys without a Mod Settings option went back to their default at the next launch.
