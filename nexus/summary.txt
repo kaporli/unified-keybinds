@@ -1,0 +1,1 @@
+Every mod's keybinds in the game's own Key Bindings menu. Adds a Mods group to Settings > Controls > Key Bindings, built at each startup from the mods you have installed, so nothing is hardcoded. Labels show the mod and action, and keys stay in sync with Mod Settings. Never changes the game's or other mods' files.

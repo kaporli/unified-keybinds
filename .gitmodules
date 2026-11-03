@@ -1,0 +1,6 @@
+[submodule "deps/RED4ext.SDK"]
+	path = deps/RED4ext.SDK
+	url = https://github.com/wopss/RED4ext.SDK.git
+[submodule "deps/pugixml"]
+	path = deps/pugixml
+	url = https://github.com/zeux/pugixml.git
