@@ -16,6 +16,8 @@ Each mod gets its own section below the vanilla keys:
 
 - One section per mod in Settings > Controls > Key Bindings, for example *"Mod: Let There Be Flight"* or *"Mod: Stash QoL"*, built at startup from the mods you have installed. Add or remove a mod and the sections follow.
 - Section and action names come from the mod's files, for example *"Vehicle Flight Linear Brake"* or *"Transfer Max Quantity"*.
+- Also lists keys the mod didn't mark as rebindable, as long as the action uses a single key (for example Enhanced Vehicle System's F1 to F4 and T).
+- A changed key applies right away, also for mods without a Mod Settings option.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.
 - Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.
@@ -40,18 +42,21 @@ red4ext/plugins/ModKeybindsMenu/scripts/
 
 ## Uninstallation
 
-Remove the `red4ext/plugins/ModKeybindsMenu` folder. Optionally delete `r6/cache/modkeybinds/`. Nothing is written to your save.
+Remove the `red4ext/plugins/ModKeybindsMenu` folder. Optionally delete `r6/cache/modkeybinds/`, where the mod keys are kept. Nothing is written to your save.
+
+Updating from 1.0.0: start the game once with 1.0.1 before uninstalling, so your `UserSettings.json` gets cleaned up.
 
 ## Known limitations
 
 - Only mods that bind keys through the game's input system show up. Hotkeys registered with Cyber Engine Tweaks stay in the CET overlay.
 - Gamepad-only actions are not listed: the Key Bindings menu is for keyboard and mouse.
+- Key combinations (a mod's `buttonGroup`, like F2 then 2) are not listed: the menu holds one key per action.
 - A mod that registers its input file late in startup through Input Loader's plugin interface may only appear from the second launch.
 - Unbinding an entry that has no Mod Settings option resets it to the mod's default key the next time a save loads.
 
 ## For mod authors
 
-Your action shows up if it has a `<button id="IK_..." overridableUI="yourActionName" />` in an input file loaded by Input Loader. Nothing else is needed.
+Your action shows up if it has a `<button id="IK_..." overridableUI="yourActionName" />` in an input file loaded by Input Loader. A `Button` mapping with a single keyboard or mouse key and no `overridableUI` shows up too, under the mapping's name. Nothing else is needed.
 
 For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.json`:
 
@@ -66,10 +71,13 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 
 ## How it works
 
-- A RED4ext plugin compares Input Loader's merged `r6/cache/inputUserMappings.xml` with the game's `r6/config/inputUserMappings.xml`. Every `overridableUI` action a mod added becomes an entry.
+- A RED4ext plugin compares Input Loader's merged `r6/cache/inputUserMappings.xml` with the game's `r6/config/inputUserMappings.xml`. Every `overridableUI` action a mod added becomes an entry, and so does every mod `Button` mapping with a single key and no `overridableUI`.
+- The game reads a copy of the merged mappings with `overridableUI` added to those single keys (`r6/cache/modkeybinds/inputUserMappings.xml`).
 - When the game reads `r6/config/settings/platform/pc/options.json`, the plugin hands it a copy with one group per mod added, written to `r6/cache/modkeybinds/options.json`. The original file stays untouched.
 - Each section is named after the mod's folder or input file name; each action after its `overridableUI` name, minus a prefix that repeats the mod's name or initials.
+- The game resets every setting if `UserSettings.json` holds a group the menu doesn't define, which would happen after removing a mod with keys. So the mod sections never go into that file: the game reads a copy with them added (`r6/cache/modkeybinds/UserSettings.read.json`), and what it writes is split again, mod keys into `r6/cache/modkeybinds/keys.json`, everything else into `UserSettings.json`.
 - A redscript system copies Mod Settings key options into the menu when a save loads, since Mod Settings applies its keys at startup, and copies menu changes back to Mod Settings.
+- The game only applies key binding settings to its own actions. The plugin hooks the game's ApplyOverrides and sets the menu's key on every mapping that carries a listed action, at startup and when a key changes, the way Mod Settings does for its own options.
 - The menu shows labels through the game's translation system, so `options.json` holds keys like `ModKeybindsMenu-itsHotkey` and the scripts register the label text for every language through Codeware.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
@@ -86,4 +94,4 @@ The plugin is built to `package/` and the release zip to `dist/`.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Uses [RED4ext.SDK](https://github.com/wopss/RED4ext.SDK), [pugixml](https://github.com/zeux/pugixml) and [nlohmann/json](https://github.com/nlohmann/json), all MIT.
+MIT, see [LICENSE](LICENSE). Uses [RED4ext.SDK](https://github.com/wopss/RED4ext.SDK), [pugixml](https://github.com/zeux/pugixml) and [nlohmann/json](https://github.com/nlohmann/json), all MIT. The input manager layouts and address hashes come from [Mod Settings](https://github.com/jackhumbert/mod_settings) (MIT).

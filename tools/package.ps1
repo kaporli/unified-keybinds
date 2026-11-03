@@ -10,6 +10,7 @@ Copy-Item (Join-Path $root "LICENSE") (Join-Path $plugin "LICENSE") -Force
 Copy-Item (Join-Path $root "deps\RED4ext.SDK\LICENSE.md") (Join-Path $plugin "LICENSE-RED4ext.SDK.md") -Force
 Copy-Item (Join-Path $root "deps\pugixml\LICENSE.md") (Join-Path $plugin "LICENSE-pugixml.md") -Force
 Copy-Item (Join-Path $root "deps\json\LICENSE.MIT") (Join-Path $plugin "LICENSE-nlohmann-json.txt") -Force
+Copy-Item (Join-Path $root "third_party\LICENSE-mod_settings.md") (Join-Path $plugin "LICENSE-mod_settings.md") -Force
 
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null

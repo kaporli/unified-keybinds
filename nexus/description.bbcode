@@ -7,6 +7,8 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [*]One section per mod in Settings > Controls > Key Bindings, for example [i]"Mod: Let There Be Flight"[/i] or [i]"Mod: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.
 [*]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].
 [*]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
+[*]Also lists keys the mod didn't mark as rebindable, as long as the action uses a single key (for example Enhanced Vehicle System's F1 to F4 and T).
+[*]A changed key applies right away, also for mods without a Mod Settings option.
 [*]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.
 [*]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.
 [/list]
@@ -27,18 +29,21 @@ Install with Mod Organizer 2 or Vortex, or extract the archive into the Cyberpun
 red4ext/plugins/ModKeybindsMenu/scripts/[/code]
 
 [size=4][b]Uninstallation[/b][/size]
-Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] folder. Optionally delete [i]r6/cache/modkeybinds/[/i]. Nothing is written to your save.
+Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] folder. Optionally delete [i]r6/cache/modkeybinds/[/i], where the mod keys are kept. Nothing is written to your save.
+
+Updating from 1.0.0: start the game once with 1.0.1 before uninstalling, so your settings file gets cleaned up.
 
 [size=4][b]Known limitations[/b][/size]
 [list]
 [*]Only mods that bind keys through the game's input system show up. Hotkeys registered with Cyber Engine Tweaks stay in the CET overlay.
 [*]Gamepad-only actions are not listed: the Key Bindings menu is for keyboard and mouse.
+[*]Key combinations (a mod's buttonGroup, like F2 then 2) are not listed: the menu holds one key per action.
 [*]A mod that registers its input file late in startup through Input Loader's plugin interface may only appear from the second launch.
 [*]Unbinding an entry that has no Mod Settings option resets it to the mod's default key the next time a save loads.
 [/list]
 
 [size=4][b]For mod authors[/b][/size]
-Your action shows up if it has a [i]<button id="IK_..." overridableUI="yourActionName" />[/i] in an input file loaded by Input Loader. Nothing else is needed.
+Your action shows up if it has a [i]<button id="IK_..." overridableUI="yourActionName" />[/i] in an input file loaded by Input Loader. A Button mapping with a single keyboard or mouse key and no overridableUI shows up too, under the mapping's name. Nothing else is needed.
 
 For nicer names than the generated ones, ship [i]r6/config/modkeybinds/<YourMod>.json[/i]:
 [code]{

@@ -22,14 +22,45 @@ struct Button
 {
     std::string id;
     std::size_t order;
+    std::vector<std::string> mappings; // mappings that carry the action
 };
 
 bool IsPad(const std::string& aKey)
 {
-    return aKey.rfind("IK_Pad", 0) == 0;
+    return aKey.rfind("IK_Pad", 0) == 0 || aKey.rfind("IK_Joy", 0) == 0;
 }
 
-// overridableUI -> first keyboard button id, in document order.
+// The only keyboard or mouse button of a Button mapping that has no overridableUI, or an
+// empty node. Key combos (buttonGroup ids) don't count, the menu holds one key per action.
+pugi::xml_node SingleKey(pugi::xml_node aMapping, const std::set<std::string>& aGroups)
+{
+    if (std::string(aMapping.attribute("type").as_string("Button")) != "Button" || !*aMapping.attribute("name").as_string())
+        return {};
+    pugi::xml_node key;
+    for (auto button : aMapping.children("button"))
+    {
+        if (button.attribute("overridableUI"))
+            return {};
+        std::string id = button.attribute("id").as_string();
+        if (id.rfind("IK_", 0) != 0 || IsPad(id) || aGroups.contains(id))
+            continue;
+        if (key)
+            return {};
+        key = button;
+    }
+    return key;
+}
+
+std::set<std::string> GroupIds(const pugi::xml_document& aDoc)
+{
+    std::set<std::string> out;
+    for (auto group : aDoc.child("bindings").children("buttonGroup"))
+        out.insert(group.attribute("id").as_string());
+    return out;
+}
+
+// overridableUI -> first keyboard button id, in document order. A mapping with a single key
+// and no overridableUI is listed by its own name, it gets one in the copy the game reads.
 std::map<std::string, Button> ReadMappings(const fs::path& aFile)
 {
     std::map<std::string, Button> out;
@@ -37,20 +68,32 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
     if (!doc.load_file(aFile.c_str()))
         return out;
 
+    auto groups = GroupIds(doc);
     std::size_t order = 0;
-    for (auto node : doc.select_nodes("//button[@overridableUI]"))
+    for (auto mapping : doc.child("bindings").children("mapping"))
     {
-        auto button = node.node();
-        std::string name = button.attribute("overridableUI").as_string();
-        std::string id = button.attribute("id").as_string();
-        if (name.empty() || id.empty())
+        if (auto key = SingleKey(mapping, groups))
+        {
+            std::string name = mapping.attribute("name").as_string();
+            out.emplace(name, Button{key.attribute("id").as_string(), order++, {name}});
             continue;
+        }
+        for (auto button : mapping.children("button"))
+        {
+            std::string name = button.attribute("overridableUI").as_string();
+            std::string id = button.attribute("id").as_string();
+            if (name.empty() || id.empty())
+                continue;
 
-        auto it = out.find(name);
-        if (it == out.end())
-            out.emplace(name, Button{id, order++});
-        else if (IsPad(it->second.id) && !IsPad(id))
-            it->second.id = id;
+            auto it = out.find(name);
+            if (it == out.end())
+                it = out.emplace(name, Button{id, order++}).first;
+            else if (IsPad(it->second.id) && !IsPad(id))
+                it->second.id = id;
+            std::string mapName = mapping.attribute("name").as_string();
+            if (std::find(it->second.mappings.begin(), it->second.mappings.end(), mapName) == it->second.mappings.end())
+                it->second.mappings.push_back(mapName);
+        }
     }
     return out;
 }
@@ -253,11 +296,6 @@ std::string ActionName(const std::string& aName, const std::string& aSource)
     return Join(words);
 }
 
-bool IsOurGroup(const std::string& aGroup)
-{
-    return aGroup.rfind(kGroupPrefix, 0) == 0;
-}
-
 // Option names in the base options.json, leaving out our own groups so a stale copy
 // doesn't hide actions.
 std::set<std::string> OptionNames(const json& aOptions)
@@ -267,7 +305,7 @@ std::set<std::string> OptionNames(const json& aOptions)
         return out;
     for (const auto& group : aOptions["options"])
     {
-        if (!group.contains("options") || IsOurGroup(group.value("group_name", "")))
+        if (!group.contains("options") || Keybinds::IsModGroup(group.value("group_name", "")))
             continue;
         for (const auto& opt : group["options"])
         {
@@ -290,6 +328,11 @@ std::string Slug(const std::string& aText)
     return out.empty() ? "Other" : out;
 }
 } // namespace
+
+bool Keybinds::IsModGroup(const std::string& aGroup)
+{
+    return aGroup.rfind(kGroupPrefix, 0) == 0;
+}
 
 std::string Keybinds::LabelKey(const Action& aAction)
 {
@@ -348,6 +391,7 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
             continue;
 
         Action action{name, button.id};
+        action.mappings = button.mappings;
         if (auto it = files.sections.find(name); it != files.sections.end())
             action.section = it->second;
         else if (auto src = sources.find(name); src != sources.end())
@@ -378,6 +422,35 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
     return out;
 }
 
+std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<Action>& aActions)
+{
+    pugi::xml_document doc;
+    if (!doc.load_file(aMerged.c_str()))
+        return {};
+
+    std::set<std::string> names;
+    for (const auto& a : aActions)
+        names.insert(a.name);
+
+    auto groups = GroupIds(doc);
+    bool changed = false;
+    for (auto mapping : doc.child("bindings").children("mapping"))
+    {
+        auto key = SingleKey(mapping, groups);
+        if (key && names.contains(mapping.attribute("name").as_string()))
+        {
+            key.append_attribute("overridableUI") = mapping.attribute("name").value();
+            changed = true;
+        }
+    }
+    if (!changed)
+        return {};
+
+    std::ostringstream out;
+    doc.save(out, "    ");
+    return out.str();
+}
+
 std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions)
 {
     auto data = json::parse(aBaseOptions, nullptr, false);
@@ -386,7 +459,7 @@ std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::v
 
     auto& groups = data["groups"];
     auto& options = data["options"];
-    auto ours = [](const json& g) { return IsOurGroup(g.value("group_name", "")); };
+    auto ours = [](const json& g) { return IsModGroup(g.value("group_name", "")); };
     groups.erase(std::remove_if(groups.begin(), groups.end(), ours), groups.end());
     options.erase(std::remove_if(options.begin(), options.end(), ours), options.end());
 

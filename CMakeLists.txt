@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ModKeybindsMenu VERSION 1.0.0 LANGUAGES CXX)
+project(ModKeybindsMenu VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,13 +12,17 @@ add_library(ModKeybindsMenu SHARED
   src/Main.cpp
   src/Keybinds.cpp
   src/Keybinds.hpp
+  src/UserSettings.cpp
+  src/UserSettings.hpp
+  src/InputOverrides.cpp
+  src/InputOverrides.hpp
   deps/pugixml/src/pugixml.cpp
 )
 
 target_include_directories(ModKeybindsMenu PRIVATE deps/pugixml/src deps/json)
 target_compile_definitions(ModKeybindsMenu PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_compile_options(ModKeybindsMenu PRIVATE /W3 /utf-8)
-target_link_libraries(ModKeybindsMenu PRIVATE RED4ext::SDK)
+target_link_libraries(ModKeybindsMenu PRIVATE RED4ext::SDK shell32 ole32)
 
 # Package layout: red4ext/plugins/ModKeybindsMenu/{ModKeybindsMenu.dll, scripts/}
 set(PKG "${CMAKE_SOURCE_DIR}/package/red4ext/plugins/ModKeybindsMenu")
