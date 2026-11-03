@@ -14,7 +14,7 @@ Each mod gets its own section below the vanilla keys:
 
 ## Features
 
-- One section per mod in Settings > Controls > Key Bindings, for example *"Mods: Let There Be Flight"* or *"Mods: Stash QoL"*, built at startup from the mods you have installed. Add or remove a mod and the sections follow.
+- One section per mod in Settings > Controls > Key Bindings, for example *"Mod: Let There Be Flight"* or *"Mod: Stash QoL"*, built at startup from the mods you have installed. Add or remove a mod and the sections follow.
 - Section and action names come from the mod's files, for example *"Vehicle Flight Linear Brake"* or *"Transfer Max Quantity"*.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.

@@ -313,7 +313,7 @@ std::string Keybinds::SectionKey(const Action& aAction)
 
 std::string Keybinds::SectionText(const Action& aAction)
 {
-    return "Mods: " + aAction.section;
+    return "Mod: " + aAction.section;
 }
 
 std::string Keybinds::Humanize(const std::string& aText)
