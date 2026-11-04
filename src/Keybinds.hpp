@@ -17,8 +17,15 @@ struct Action
     std::string label;      // action text shown in the menu
     std::vector<std::string> mappings; // input mappings that carry the action
     std::vector<std::string> combo;    // keys of the default key combination, else empty
-    std::string current;               // Native Settings UI: key the mod had at the last launch
+    std::string current;               // Native Settings UI, RCF: key the mod has
+    bool placeholder = false;          // bound to an empty buttonGroup, another mod fills in the key
+    std::string modId;                 // RCF: the mod that keeps this key, else empty
+    std::string labelKey;              // translation key the mod registers for the label, else empty
 };
+
+// The key an action starts a session with: RCF's for keys it keeps (the scripts copy every
+// change to RCF), else the one saved in the menu, else the mod's.
+std::string StartKey(const Action& aAction, const std::map<std::string, std::string>& aSaved);
 
 // The menu shows display names through the game's translation system, so options.json gets
 // keys and the scripts register the text for them with Codeware.

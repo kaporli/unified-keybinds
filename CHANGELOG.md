@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 (2026-11-05)
+
+- Lists the keys of mods that keep them in Redscript Configuration Framework (RCF), such as the DigitalVixen mods (Shattered Chrome, Chrome Plating, Injuries and others), with the mod's own names, one section per mod. A key changed in Key Bindings goes to RCF and its hub; a key changed in RCF's hub shows up in Key Bindings within 2 seconds. Keys appear from the second launch after the mod is installed. Gamepad keys are not supported yet and stay in RCF's hub.
+- RCF's hub key (F8) is kept in sync with its Options page the same way.
+- Fix: with this mod installed, DigitalVixen hotkeys set in RCF's hub did nothing, and Key Bindings listed every DigitalVixen key, of installed and missing mods alike, with no key set. Keys that a mod leaves empty for another mod to fill in are no longer listed unless RCF has them.
+
 ## 1.2.0 (2026-11-04)
 
 - Lists the keys that Cyber Engine Tweaks mods add through Native Settings UI, one section per mod, from the second launch with them installed. A key changed in Key Bindings goes to the mod, which saves and uses it right away; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself shows up in Key Bindings. Needs Cyber Engine Tweaks and Native Settings UI; the archive now includes a small CET script.

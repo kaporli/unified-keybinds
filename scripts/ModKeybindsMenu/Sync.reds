@@ -113,6 +113,7 @@ public class ModKeybindsSystem extends ScriptableSystem {
     let menu = this.MenuVar(group, name);
     if IsDefined(menu) {
       ModKeybindsMenu_SetKeys([name], [menu.GetValue()]);
+      ModKeybindsRcf.MenuChanged(this.GetGameInstance(), name, menu.GetValue());
     }
     let kb = this.ModSettingsVar(name);
     // A key combination can't go into Mod Settings.

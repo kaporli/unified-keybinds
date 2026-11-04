@@ -9,8 +9,11 @@ public static native func ModKeybindsMenu_Defaults() -> array<CName>
 // Settings group (one per mod section) of each action, same order as ModKeybindsMenu_Names
 public static native func ModKeybindsMenu_Groups() -> array<CName>
 
-// Last key saved for each action outside UserSettings.json ("None" if none), same order as ModKeybindsMenu_Names
+// Key each action starts a session with: RCF's for keys RCF keeps, else the last one saved outside UserSettings.json ("None" if none), same order as ModKeybindsMenu_Names
 public static native func ModKeybindsMenu_Saved() -> array<CName>
+
+// Redscript Configuration Framework mod that keeps each action's key, else empty, same order as ModKeybindsMenu_Names
+public static native func ModKeybindsMenu_RcfMods() -> array<String>
 
 // Translation keys of the section headers and action labels, same order as ModKeybindsMenu_LabelTexts
 public static native func ModKeybindsMenu_LabelKeys() -> array<String>

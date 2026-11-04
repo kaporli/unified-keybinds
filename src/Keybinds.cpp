@@ -24,6 +24,7 @@ struct Button
     std::size_t order;
     std::vector<std::string> mappings; // mappings that carry the action
     std::vector<std::string> combo;    // keys of a key combination (buttonGroup), else empty
+    bool placeholder = false;          // an empty buttonGroup
 };
 
 bool IsPad(const std::string& aKey)
@@ -87,6 +88,13 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
         return out;
 
     auto groups = ReadGroups(doc);
+    // buttonGroups without buttons: a placeholder for a key another mod puts in place.
+    std::set<std::string> empty;
+    for (auto group : doc.child("bindings").children("buttonGroup"))
+    {
+        if (!group.child("button"))
+            empty.insert(group.attribute("id").as_string());
+    }
     std::size_t order = 0;
     for (auto mapping : doc.child("bindings").children("mapping"))
     {
@@ -107,9 +115,12 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
 
             auto it = out.find(name);
             if (it == out.end())
-                it = out.emplace(name, Button{id, order++}).first;
+                it = out.emplace(name, Button{id, order++, {}, {}, empty.contains(id)}).first;
             else if (IsPad(it->second.id) && !IsPad(id))
+            {
                 it->second.id = id;
+                it->second.placeholder = empty.contains(id);
+            }
             std::string mapName = mapping.attribute("name").as_string();
             if (std::find(it->second.mappings.begin(), it->second.mappings.end(), mapName) == it->second.mappings.end())
                 it->second.mappings.push_back(mapName);
@@ -356,10 +367,21 @@ bool Keybinds::IsModGroup(const std::string& aGroup)
 
 std::string Keybinds::LabelKey(const Action& aAction)
 {
+    if (!aAction.labelKey.empty())
+        return aAction.labelKey;
     // Labels a mod gave as LocKey# are already translation keys.
     if (aAction.label.rfind("LocKey#", 0) == 0)
         return aAction.label;
     return kLabelKeyPrefix + aAction.name;
+}
+
+std::string Keybinds::StartKey(const Action& aAction, const std::map<std::string, std::string>& aSaved)
+{
+    if (!aAction.modId.empty() && !aAction.current.empty())
+        return aAction.current;
+    if (auto it = aSaved.find(aAction.name); it != aSaved.end())
+        return it->second;
+    return !aAction.current.empty() ? aAction.current : aAction.defaultKey;
 }
 
 std::string Keybinds::GroupPath(const Action& aAction)
@@ -413,6 +435,7 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         Action action{name, button.id};
         action.mappings = button.mappings;
         action.combo = button.combo;
+        action.placeholder = button.placeholder;
         if (auto it = files.sections.find(name); it != files.sections.end())
             action.section = it->second;
         else if (auto src = sources.find(name); src != sources.end())

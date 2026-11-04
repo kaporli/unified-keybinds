@@ -17,6 +17,7 @@
 #include "InputOverrides.hpp"
 #include "Keybinds.hpp"
 #include "NativeSettings.hpp"
+#include "Rcf.hpp"
 #include "UserSettings.hpp"
 
 namespace fs = std::filesystem;
@@ -112,6 +113,7 @@ bool Generate(const fs::path& aBase)
     if (fresh)
     {
         actions = Keybinds::Collect(g_root, base, Log);
+        Rcf::Apply(g_root, actions, Log);
         for (auto& a : NativeSettings::Read(g_root))
         {
             if (std::none_of(actions.begin(), actions.end(), [&](const auto& b) { return b.name == a.name; }))
@@ -351,7 +353,8 @@ void ReturnNames(RED4ext::DynArray<RED4ext::CName>* aOut, NameList aList)
         case NameList::Defaults: value = a.defaultKey; break;
         case NameList::Groups: value = Keybinds::GroupPath(a); break;
         case NameList::Saved:
-            value = saved.contains(a.name) ? saved[a.name] : !a.current.empty() ? a.current : "None";
+            value = !a.modId.empty() || saved.contains(a.name) || !a.current.empty() ? Keybinds::StartKey(a, saved)
+                                                                                    : "None";
             break;
         }
         aOut->PushBack(RED4ext::CName(value.c_str()));
@@ -377,9 +380,22 @@ void ReturnStrings(RED4ext::DynArray<RED4ext::CString>* aOut, bool aKeys)
                 aOut->PushBack(RED4ext::CString((aKeys ? key : Keybinds::SectionText(a)).c_str()));
         }
         auto key = Keybinds::LabelKey(a);
-        if (key.rfind("LocKey#", 0) != 0)
+        if (key.rfind("LocKey#", 0) != 0 && a.labelKey.empty())
             aOut->PushBack(RED4ext::CString((aKeys ? key : a.label).c_str()));
     }
+}
+
+// For each action, the RCF mod that keeps its key, else empty.
+void Native_RcfMods(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
+                    int64_t)
+{
+    aFrame->code++;
+    if (!aOut)
+        return;
+    EnsureCollected();
+    std::lock_guard lock(g_mutex);
+    for (const auto& a : g_actions)
+        aOut->PushBack(RED4ext::CString(a.modId.c_str()));
 }
 
 void Native_Names(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
@@ -492,7 +508,7 @@ void SetStoredKeys()
         std::lock_guard lock(g_mutex);
         for (const auto& a : g_actions)
         {
-            out.push_back({a.name, a.mappings, saved.contains(a.name) ? saved[a.name] : a.defaultKey});
+            out.push_back({a.name, a.mappings, Keybinds::StartKey(a, saved)});
             g_loaded[a.name] = out.back().key;
         }
     }
@@ -693,6 +709,12 @@ void PostRegisterTypes()
     texts->SetReturnType("array:String");
     rtti->RegisterFunction(texts);
 
+    auto rcfMods =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RcfMods", "ModKeybindsMenu_RcfMods", &Native_RcfMods);
+    rcfMods->flags = flags;
+    rcfMods->SetReturnType("array:String");
+    rtti->RegisterFunction(rcfMods);
+
     auto setKeys =
         RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetKeys", "ModKeybindsMenu_SetKeys", &Native_SetKeys);
     setKeys->flags = flags;
@@ -819,7 +841,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 2, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 3, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

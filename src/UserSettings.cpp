@@ -127,7 +127,7 @@ std::string UserSettings::WithModSections(const fs::path& aSettings, const fs::p
             groups.push_back({{"group_name", path}, {"options", json::array()}});
             index = groups.size() - 1;
         }
-        auto key = saved.contains(a.name) ? saved[a.name] : !a.current.empty() ? a.current : a.defaultKey;
+        auto key = Keybinds::StartKey(a, saved);
         groups[index]["options"].push_back({{"name", a.name}, {"type", "name"}, {"value", key}, {"default_value", a.defaultKey}});
     }
     return settings.dump(4);

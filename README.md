@@ -9,9 +9,10 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 ## Limitations
 
 > [!WARNING]
-> - Keyboard and mouse only: controller keys are left out.
+> - Keyboard and mouse only: controller keys are left out. Redscript Configuration Framework mods keep theirs in RCF's hub. I'm looking into supporting them.
 > - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
 > - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
+> - Redscript Configuration Framework keys (the DigitalVixen mods, for example) appear from the second launch after you install the mod, and take a single key only.
 > - A new key combination, or going back to one, applies after a restart. A popup tells you. Single keys apply right away.
 > - Combinations are modifier + key only. In game, press the key within half a second of the modifier.
 > - A combination stays in this menu only: Mod Settings keeps its own single key.
@@ -26,9 +27,10 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 | Input Loader input file (`overridableUI`) | Yes | Most mods, for example Let There Be Flight |
 | Input Loader input file, single key or key combination without `overridableUI` | Yes | For example Enhanced Vehicle System |
 | Mod Settings key option | Yes | Kept in sync both ways |
-| Redscript Configuration Framework | Yes | Its keys are in Input Loader files and Mod Settings |
+| Redscript Configuration Framework | Yes | Its own keys are in Input Loader files and Mod Settings. Its hub key (F8) is kept in sync with its Options |
 | Native Settings UI | Yes | From the second launch, single keys |
 | Unified Mod Settings | Yes | Edits Native Settings UI and Mod Settings keys, which show up here |
+| Redscript Configuration Framework hub, for example the DigitalVixen mods | Yes | From the second launch, single keys, with the mod's own names. Kept in sync with the hub both ways. Gamepad keys are not supported yet: they stay in the hub, and I'm looking into it |
 | Cyber Engine Tweaks hotkeys (`registerHotkey`, `registerInput`) | No | Stay in the CET overlay |
 
 ## Screenshots
@@ -51,6 +53,7 @@ Each mod gets its own section below the vanilla keys:
 - A changed key applies right away, also for mods without a Mod Settings option.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
+- Also lists the keys of mods that keep them in Redscript Configuration Framework (for example DigitalVixen's Shattered Chrome, Chrome Plating or Injuries), with the mod's own names. A key changed here or in RCF's hub changes both.
 - Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.
 - Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.
 
@@ -63,6 +66,7 @@ Each mod gets its own section below the vanilla keys:
 - [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
 - [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885) (optional, for keeping keys in sync with mods that also offer them there)
 - [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107) and [Native Settings UI](https://www.nexusmods.com/cyberpunk2077/mods/3518) (optional, for the keys of mods that use Native Settings UI)
+- [Redscript Configuration Framework](https://www.nexusmods.com/cyberpunk2077/mods/30726) (optional, for the keys of mods that keep them there)
 
 ## Installation
 
@@ -108,6 +112,7 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - The game only applies key binding settings to its own actions. The plugin hooks the game's ApplyOverrides and sets the menu's key on every mapping that carries a listed action, at startup and when a key changes, the way Mod Settings does for its own options.
 - The menu shows labels through the game's translation system, so `options.json` holds keys like `ModKeybindsMenu-itsHotkey` and the scripts register the label text for every language through Codeware.
 - A small CET script (`bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua`) reads the key bindings in Native Settings UI and hands them to the plugin, which lists them from the next launch (`r6/cache/modkeybinds/nativesettings.json`). A key changed in Key Bindings goes to the mod through Native Settings UI when changes are applied or the settings menu closes; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself goes to Key Bindings within a second.
+- Mods that use Redscript Configuration Framework bind their actions to an empty `buttonGroup` and RCF puts the key in place. RCF stores each mod's page and values in `r6/storages/RedscriptConfigFramework` (`<mod>.cached.json`, `<mod>.json`); the plugin lists the keys from there with RCF's labels and the mod's current key, and leaves out placeholder actions RCF doesn't list. The menu entry sets the binding, so the scripts copy a change to RCF (`DVRCF.SetInt`, or RCF's settings for its hub key) and check RCF every 2 seconds, when a session starts and when the settings menu opens, to copy changes made in its hub.
 - Defaults resets an entry to the key the game knows for it, which it only knows for its own actions, so the scripts set mod entries to the mod's key.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
