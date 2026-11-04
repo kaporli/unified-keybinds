@@ -4,11 +4,37 @@ Rebind any mod key, even ones the mod never made rebindable, and set key combina
 
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
+[size=4][b][color=#e5be37]Limitations[/color][/b][/size]
+[color=#e5be37][list]
+[*]Keyboard and mouse only: controller keys are left out.
+[*]Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
+[*]Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
+[*]A new key combination, or going back to one, applies after a restart. A popup tells you. Single keys apply right away.
+[*]Combinations are modifier + key only. In game, press the key within half a second of the modifier.
+[*]A combination stays in this menu only: Mod Settings keeps its own single key.
+[*]The game crashes with more than about 30 key combinations in total (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
+[*]A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.
+[*]Unbinding an entry without a Mod Settings option resets it to the mod's default key when a save loads.
+[/list][/color]
+
+[size=4][b]Supported keybind sources[/b][/size]
+[table]
+[tr][th]Where the mod keeps its keys[/th][th]Supported[/th][th]Notes[/th][/tr]
+[tr][td]Input Loader input file (overridableUI)[/td][td][color=#4caf50]Yes[/color][/td][td]Most mods, for example Let There Be Flight[/td][/tr]
+[tr][td]Input Loader input file, single key or key combination without overridableUI[/td][td][color=#4caf50]Yes[/color][/td][td]For example Enhanced Vehicle System[/td][/tr]
+[tr][td]Mod Settings key option[/td][td][color=#4caf50]Yes[/color][/td][td]Kept in sync both ways[/td][/tr]
+[tr][td]Redscript Configuration Framework[/td][td][color=#4caf50]Yes[/color][/td][td]Its keys are in Input Loader files and Mod Settings[/td][/tr]
+[tr][td]Native Settings UI[/td][td][color=#4caf50]Yes[/color][/td][td]From the second launch, single keys[/td][/tr]
+[tr][td]Unified Mod Settings[/td][td][color=#4caf50]Yes[/color][/td][td]Edits Native Settings UI and Mod Settings keys, which show up here[/td][/tr]
+[tr][td]Cyber Engine Tweaks hotkeys (registerHotkey, registerInput)[/td][td][color=#e53935]No[/color][/td][td]Stay in the CET overlay[/td][/tr]
+[/table]
+
 [size=4][b]Features[/b][/size]
 [list]
 [*]One section per mod in Settings > Controls > Key Bindings, for example [i]"Mod: Let There Be Flight"[/i] or [i]"Mod: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.
 [*]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].
 [*]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
+[*]Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 [*]Also lists keys the mod didn't mark as rebindable (for example Enhanced Vehicle System's F1 to F4 and T).
 [*]Key combinations are shown as their keys (for example [i]"F2 + 2"[/i]) and can be rebound to a single key. Defaults puts the combination back from the next launch.
 [*]Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example [i]"Ctrl + K"[/i]. A modifier pressed on its own is bound alone.
@@ -25,29 +51,19 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] (optional, for keeping keys in sync with mods that also offer them there)
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] and [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url] (optional, for the keys of mods that use Native Settings UI)
 [/list]
 
 [size=4][b]Installation[/b][/size]
 Install with Mod Organizer 2 or Vortex, or extract the archive into the Cyberpunk 2077 game folder. The files go to:
 [code]red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
-red4ext/plugins/ModKeybindsMenu/scripts/[/code]
+red4ext/plugins/ModKeybindsMenu/scripts/
+bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua[/code]
 
 [size=4][b]Uninstallation[/b][/size]
-Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] folder. Optionally delete [i]r6/cache/modkeybinds/[/i], where the mod keys are kept. Nothing is written to your save.
+Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] and [i]bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu[/i] folders. Optionally delete [i]r6/cache/modkeybinds/[/i], where the mod keys are kept. Nothing is written to your save.
 
 Updating from 1.0.0: start the game once with 1.0.1 before uninstalling, so your settings file gets cleaned up.
-
-[size=4][b]Known limitations[/b][/size]
-[list]
-[*]Only mods that bind keys through the game's input system show up. Hotkeys registered with Cyber Engine Tweaks stay in the CET overlay.
-[*]Gamepad-only actions are not listed: the Key Bindings menu is for keyboard and mouse.
-[*]A new key combination, or going back to one, applies from the next launch: the game only reads combinations from its input files at startup. A popup says so when you apply. Single keys apply right away.
-[*]Combinations are modifier + key only. In game, press the key within half a second of the modifier.
-[*]A combination is kept in this menu only: Mod Settings holds one key, so it keeps its own.
-[*]The game crashes with more than about 30 key combinations in all (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
-[*]A mod that registers its input file late in startup through Input Loader's plugin interface may only appear from the second launch.
-[*]Unbinding an entry that has no Mod Settings option resets it to the mod's default key the next time a save loads.
-[/list]
 
 [size=4][b]For mod authors[/b][/size]
 Your action shows up if it has a [i]<button id="IK_..." overridableUI="yourActionName" />[/i] in an input file loaded by Input Loader. A Button mapping with a single keyboard or mouse key or key combination (buttonGroup) and no overridableUI shows up too, under the mapping's name. Nothing else is needed.

@@ -6,6 +6,31 @@ Rebind any mod key, even ones the mod never made rebindable, and set key combina
 
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
+## Limitations
+
+> [!WARNING]
+> - Keyboard and mouse only: controller keys are left out.
+> - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
+> - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
+> - A new key combination, or going back to one, applies after a restart. A popup tells you. Single keys apply right away.
+> - Combinations are modifier + key only. In game, press the key within half a second of the modifier.
+> - A combination stays in this menu only: Mod Settings keeps its own single key.
+> - The game crashes with more than about 30 key combinations in total (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
+> - A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.
+> - Unbinding an entry without a Mod Settings option resets it to the mod's default key when a save loads.
+
+## Supported keybind sources
+
+| Where the mod keeps its keys | Supported | Notes |
+| --- | --- | --- |
+| Input Loader input file (`overridableUI`) | Yes | Most mods, for example Let There Be Flight |
+| Input Loader input file, single key or key combination without `overridableUI` | Yes | For example Enhanced Vehicle System |
+| Mod Settings key option | Yes | Kept in sync both ways |
+| Redscript Configuration Framework | Yes | Its keys are in Input Loader files and Mod Settings |
+| Native Settings UI | Yes | From the second launch, single keys |
+| Unified Mod Settings | Yes | Edits Native Settings UI and Mod Settings keys, which show up here |
+| Cyber Engine Tweaks hotkeys (`registerHotkey`, `registerInput`) | No | Stay in the CET overlay |
+
 ## Screenshots
 
 Each mod gets its own section below the vanilla keys:
@@ -25,6 +50,7 @@ Each mod gets its own section below the vanilla keys:
 - Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example *"Ctrl + K"*. A modifier pressed on its own is bound alone.
 - A changed key applies right away, also for mods without a Mod Settings option.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
+- Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 - Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.
 - Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.
 
@@ -36,6 +62,7 @@ Each mod gets its own section below the vanilla keys:
 - [Input Loader](https://www.nexusmods.com/cyberpunk2077/mods/4575)
 - [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
 - [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885) (optional, for keeping keys in sync with mods that also offer them there)
+- [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107) and [Native Settings UI](https://www.nexusmods.com/cyberpunk2077/mods/3518) (optional, for the keys of mods that use Native Settings UI)
 
 ## Installation
 
@@ -44,24 +71,14 @@ Extract the archive into the Cyberpunk 2077 game folder, or install it with Mod 
 ```
 red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
 red4ext/plugins/ModKeybindsMenu/scripts/
+bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
 ```
 
 ## Uninstallation
 
-Remove the `red4ext/plugins/ModKeybindsMenu` folder. Optionally delete `r6/cache/modkeybinds/`, where the mod keys are kept. Nothing is written to your save.
+Remove the `red4ext/plugins/ModKeybindsMenu` and `bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu` folders. Optionally delete `r6/cache/modkeybinds/`, where the mod keys are kept. Nothing is written to your save.
 
 Updating from 1.0.0: start the game once with 1.0.1 before uninstalling, so your `UserSettings.json` gets cleaned up.
-
-## Known limitations
-
-- Only mods that bind keys through the game's input system show up. Hotkeys registered with Cyber Engine Tweaks stay in the CET overlay.
-- Gamepad-only actions are not listed: the Key Bindings menu is for keyboard and mouse.
-- A new key combination, or going back to one, applies from the next launch: the game only reads combinations from its input files at startup. A popup says so when you apply. Single keys apply right away.
-- Combinations are modifier + key only. In game, press the key within half a second of the modifier.
-- A combination is kept in this menu only: Mod Settings holds one key, so it keeps its own.
-- The game crashes with more than about 30 key combinations in all (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
-- A mod that registers its input file late in startup through Input Loader's plugin interface may only appear from the second launch.
-- Unbinding an entry that has no Mod Settings option resets it to the mod's default key the next time a save loads.
 
 ## For mod authors
 
@@ -90,6 +107,8 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - A redscript system copies Mod Settings key options into the menu when a save loads, since Mod Settings applies its keys at startup, and copies menu changes back to Mod Settings.
 - The game only applies key binding settings to its own actions. The plugin hooks the game's ApplyOverrides and sets the menu's key on every mapping that carries a listed action, at startup and when a key changes, the way Mod Settings does for its own options.
 - The menu shows labels through the game's translation system, so `options.json` holds keys like `ModKeybindsMenu-itsHotkey` and the scripts register the label text for every language through Codeware.
+- A small CET script (`bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua`) reads the key bindings in Native Settings UI and hands them to the plugin, which lists them from the next launch (`r6/cache/modkeybinds/nativesettings.json`). A key changed in Key Bindings goes to the mod through Native Settings UI when changes are applied or the settings menu closes; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself goes to Key Bindings within a second.
+- Defaults resets an entry to the key the game knows for it, which it only knows for its own actions, so the scripts set mod entries to the mod's key.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
 ## Building

@@ -1,4 +1,4 @@
-# Builds the plugin and dist/ModKeybindsMenu-<version>.zip for Nexus (game-folder layout: red4ext/...).
+# Builds the plugin and dist/ModKeybindsMenu-<version>.zip for Nexus (game-folder layout: red4ext/..., bin/...).
 param([string]$Version = "1.0.0")
 $root = Split-Path -Parent $PSScriptRoot
 & cmd.exe /c (Join-Path $PSScriptRoot "build.bat")
@@ -16,5 +16,5 @@ $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
 $zip = Join-Path $dist "ModKeybindsMenu-$Version.zip"
 if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path (Join-Path $root "package\red4ext") -DestinationPath $zip
+Compress-Archive -Path (Join-Path $root "package\red4ext"), (Join-Path $root "package\bin") -DestinationPath $zip
 "Built $zip"

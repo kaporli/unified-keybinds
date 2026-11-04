@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ModKeybindsMenu VERSION 1.1.1 LANGUAGES CXX)
+project(ModKeybindsMenu VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,8 @@ add_library(ModKeybindsMenu SHARED
   src/UserSettings.hpp
   src/InputOverrides.cpp
   src/InputOverrides.hpp
+  src/NativeSettings.cpp
+  src/NativeSettings.hpp
   deps/pugixml/src/pugixml.cpp
 )
 
@@ -24,10 +26,14 @@ target_compile_definitions(ModKeybindsMenu PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX 
 target_compile_options(ModKeybindsMenu PRIVATE /W3 /utf-8)
 target_link_libraries(ModKeybindsMenu PRIVATE RED4ext::SDK shell32 ole32)
 
-# Package layout: red4ext/plugins/ModKeybindsMenu/{ModKeybindsMenu.dll, scripts/}
+# Package layout: red4ext/plugins/ModKeybindsMenu/{ModKeybindsMenu.dll, scripts/} and the CET companion
 set(PKG "${CMAKE_SOURCE_DIR}/package/red4ext/plugins/ModKeybindsMenu")
+# Companion for Native Settings UI key bindings, run by CET when installed
+set(CET "${CMAKE_SOURCE_DIR}/package/bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu")
 add_custom_command(TARGET ModKeybindsMenu POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PKG}/scripts"
   COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:ModKeybindsMenu>" "${PKG}/"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/scripts" "${PKG}/scripts"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CET}"
+  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/cet/init.lua" "${CET}/"
 )

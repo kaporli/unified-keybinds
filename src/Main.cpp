@@ -16,6 +16,7 @@
 
 #include "InputOverrides.hpp"
 #include "Keybinds.hpp"
+#include "NativeSettings.hpp"
 #include "UserSettings.hpp"
 
 namespace fs = std::filesystem;
@@ -109,7 +110,17 @@ bool Generate(const fs::path& aBase)
     }
     bool fresh = actions.empty();
     if (fresh)
+    {
         actions = Keybinds::Collect(g_root, base, Log);
+        for (auto& a : NativeSettings::Read(g_root))
+        {
+            if (std::none_of(actions.begin(), actions.end(), [&](const auto& b) { return b.name == a.name; }))
+                actions.push_back(std::move(a));
+        }
+        // One run per section, also when a mod has keys in both.
+        std::stable_sort(actions.begin(), actions.end(),
+                         [](const auto& a, const auto& b) { return a.section < b.section; });
+    }
     auto merged = Keybinds::MergeOptions(base, actions);
     if (merged.empty())
     {
@@ -340,7 +351,7 @@ void ReturnNames(RED4ext::DynArray<RED4ext::CName>* aOut, NameList aList)
         case NameList::Defaults: value = a.defaultKey; break;
         case NameList::Groups: value = Keybinds::GroupPath(a); break;
         case NameList::Saved:
-            value = saved.contains(a.name) ? saved[a.name] : "None";
+            value = saved.contains(a.name) ? saved[a.name] : !a.current.empty() ? a.current : "None";
             break;
         }
         aOut->PushBack(RED4ext::CName(value.c_str()));
@@ -486,6 +497,29 @@ void SetStoredKeys()
         }
     }
     InputOverrides::Set(out);
+}
+
+// Key bindings the Lua companion found in Native Settings UI: name, section, label, key, default.
+// Stored for the next launch, when they get their menu entries.
+void Native_SetNativeSettings(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    std::array<RED4ext::DynArray<RED4ext::CString>, 5> lists;
+    for (auto& list : lists)
+        RED4ext::GetParameter(aFrame, &list);
+    aFrame->code++;
+
+    std::vector<NativeSettings::Entry> entries;
+    for (uint32_t i = 0; i < lists[0].size(); ++i)
+    {
+        bool complete = true;
+        for (const auto& list : lists)
+            complete = complete && i < list.size();
+        if (complete)
+            entries.push_back({lists[0][i].c_str(), lists[1][i].c_str(), lists[2][i].c_str(), lists[3][i].c_str(),
+                               lists[4][i].c_str()});
+    }
+    if (!NativeSettings::Write(g_root, entries))
+        Log("Could not store the Native Settings UI key bindings");
 }
 
 // While an entry waits for a key: the modifier (Shift, Ctrl, Alt) that was held when another key
@@ -692,6 +726,13 @@ void PostRegisterTypes()
     heldModifier->SetReturnType("CName");
     rtti->RegisterFunction(heldModifier);
 
+    auto nativeSettings = RED4ext::CGlobalFunction::Create(
+        "ModKeybindsMenu_SetNativeSettings", "ModKeybindsMenu_SetNativeSettings", &Native_SetNativeSettings);
+    nativeSettings->flags = flags;
+    for (auto param : {"names", "sections", "labels", "keys", "defaults"})
+        nativeSettings->AddParam("array:String", param);
+    rtti->RegisterFunction(nativeSettings);
+
     SetStoredKeys();
 }
 } // namespace
@@ -778,7 +819,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 1, 1);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 2, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

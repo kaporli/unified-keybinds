@@ -20,7 +20,8 @@ public class ModKeybindsComboEvent extends Event {}
 protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
   if e.IsAction(n"click") || e.IsAction(n"tap") {
     let v = this.m_SettingsEntry as ConfigVarName;
-    if IsDefined(v) && ModKeybindsIsModGroup(v) {
+    // Native Settings UI mods read a single key.
+    if IsDefined(v) && ModKeybindsIsModGroup(v) && !StrBeginsWith(NameToString(v.GetName()), "NSUI_") {
       this.m_modKeybindsBinding = true;
       ModKeybindsMenu_WatchModifier();
     }

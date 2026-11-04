@@ -17,6 +17,7 @@ struct Action
     std::string label;      // action text shown in the menu
     std::vector<std::string> mappings; // input mappings that carry the action
     std::vector<std::string> combo;    // keys of the default key combination, else empty
+    std::string current;               // Native Settings UI: key the mod had at the last launch
 };
 
 // The menu shows display names through the game's translation system, so options.json gets

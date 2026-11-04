@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 (2026-11-04)
+
+- Lists the keys that Cyber Engine Tweaks mods add through Native Settings UI, one section per mod, from the second launch with them installed. A key changed in Key Bindings goes to the mod, which saves and uses it right away; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself shows up in Key Bindings. Needs Cyber Engine Tweaks and Native Settings UI; the archive now includes a small CET script.
+- Fix: Defaults in Key Bindings left every mod entry empty. It now sets them to the mod's own key.
+
 ## 1.1.1 (2026-11-04)
 
 - Key combinations are listed too, shown as their keys (for example Enhanced Vehicle System's F2 + 2). They can be rebound to a single key, and Defaults puts the combination back from the next launch.
