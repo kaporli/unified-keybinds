@@ -2,6 +2,8 @@
 
 Every mod's keybinds in the game's own Key Bindings menu.
 
+Rebind any mod key, even ones the mod never made rebindable, and set key combinations, all next to the vanilla keys.
+
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
 ## Screenshots
