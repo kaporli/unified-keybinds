@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -11,10 +12,11 @@ namespace Keybinds
 struct Action
 {
     std::string name;       // overridableUI name, also the settings var name
-    std::string defaultKey; // key from the mod's input file, e.g. IK_L
+    std::string defaultKey; // key from the mod's input file, e.g. IK_L, or a buttonGroup id
     std::string section;    // mod name, one menu section per mod
     std::string label;      // action text shown in the menu
     std::vector<std::string> mappings; // input mappings that carry the action
+    std::vector<std::string> combo;    // keys of the default key combination, else empty
 };
 
 // The menu shows display names through the game's translation system, so options.json gets
@@ -44,7 +46,10 @@ std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::strin
 
 // Merged mappings (aMerged) with overridableUI added to the single-key mappings in aActions,
 // so the game lets them be rebound. Empty if there is nothing to add.
-std::string MarkRebindable(const std::filesystem::path& aMerged, const std::vector<Action>& aActions);
+// aCombos maps an action to a key combination picked in the menu ("IK_LControl+IK_K"); the
+// action's mapping gets that combination (a buttonGroup), as many as the game allows.
+std::string MarkRebindable(const std::filesystem::path& aMerged, const std::vector<Action>& aActions,
+                           const std::map<std::string, std::string>& aCombos, const LogFn& aLog);
 
 // aBaseOptions with one group per section added. Groups from an older run are replaced.
 std::string MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions);

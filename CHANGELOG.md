@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 (2026-11-04)
+
+- Key combinations are listed too, shown as their keys (for example Enhanced Vehicle System's F2 + 2). They can be rebound to a single key, and Defaults puts the combination back from the next launch.
+- Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example Ctrl + K. A modifier pressed on its own is bound alone. A new combination applies from the next launch, and a popup says so.
+- Fix: a key combination on an action that also has a Mod Settings option no longer reverts at startup.
+
 ## 1.1.0 (2026-11-03)
 
 - Renamed to Native Mod Keybinds (was Mod Keybinds Menu). Files and folders keep their names, so updating works as before.

@@ -60,12 +60,20 @@ struct Entry
     uint32_t hash;
     std::vector<RED4ext::CName> mappings;
     uint16_t key;
+    bool original; // the binding loaded at startup, e.g. a key combination
+};
+
+struct Original
+{
+    uint16_t key;
+    uint32_t keyFull;
 };
 
 void* g_target = nullptr;
 ApplyOverrides_t g_original = nullptr;
 std::mutex g_mutex;
 std::map<std::string, Entry> g_entries;
+std::map<std::pair<uint64_t, uint32_t>, Original> g_originals; // by mapping name hash and overridableUI hash
 Manager* g_manager = nullptr;
 bool g_applied = false; // the game applied its bindings once
 
@@ -114,11 +122,18 @@ bool Apply(Manager* aManager)
                 continue;
             for (auto& mapping : collection->mappings)
             {
-                if (mapping.overridable == entry.hash && mapping.key != entry.key && !pad.contains(mapping.key))
+                if (mapping.overridable != entry.hash)
+                    continue;
+                auto& original = g_originals.try_emplace({mapName.hash, entry.hash}, Original{mapping.key, mapping.keyFull})
+                                     .first->second;
+                if (pad.contains(original.key))
+                    continue;
+                uint16_t key = entry.original ? original.key : entry.key;
+                uint32_t keyFull = entry.original ? original.keyFull : key;
+                if (mapping.key != key || mapping.keyFull != keyFull)
                 {
-                    if (mapping.keyFull == mapping.key)
-                        mapping.keyFull = entry.key;
-                    mapping.key = entry.key;
+                    mapping.key = key;
+                    mapping.keyFull = keyFull;
                     changed = true;
                 }
             }
@@ -168,10 +183,12 @@ void InputOverrides::Set(const std::vector<Key>& aKeys)
         std::lock_guard lock(g_mutex);
         for (const auto& k : aKeys)
         {
+            // A name that is no key (a key combination) means the binding loaded at startup: the
+            // game only takes combinations from its input files.
             auto key = byName.find(RED4ext::CName(k.key.c_str()));
-            if (key == byName.end())
-                continue;
-            Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, key->second};
+            Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, 0, key == byName.end()};
+            if (!entry.original)
+                entry.key = key->second;
             for (const auto& m : k.mappings)
                 entry.mappings.emplace_back(m.c_str());
             g_entries[k.name] = std::move(entry);
@@ -183,3 +200,4 @@ void InputOverrides::Set(const std::vector<Key>& aKeys)
     if (manager)
         reinterpret_cast<ApplyOverrides_t>(g_target)(manager);
 }
+

@@ -16,12 +16,14 @@ struct Key
 {
     std::string name;                  // overridableUI name
     std::vector<std::string> mappings; // mappings that carry it
-    std::string key;                   // EInputKey name, e.g. IK_F7
+    std::string key;                   // EInputKey name, e.g. IK_F7, or IK_LControl+IK_K
 };
 
 bool Attach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle);
 void Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle);
 
-// Keys used from now on. Applied right away once the game has applied its own bindings.
+// Keys used from now on. A key combination ("IK_LControl+IK_K", or a mod's buttonGroup id) keeps
+// the binding loaded at startup: the game only takes combinations from its input files. Applied
+// right away once the game has applied its own bindings.
 void Set(const std::vector<Key>& aKeys);
 } // namespace InputOverrides

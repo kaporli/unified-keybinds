@@ -1,8 +1,12 @@
 #include <Windows.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <array>
+#include <atomic>
 #include <mutex>
+#include <thread>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -35,6 +39,8 @@ std::unordered_set<HANDLE> g_writeHandles;
 std::mutex g_mutex;
 bool g_collected = false;
 std::vector<Keybinds::Action> g_actions;
+std::map<std::string, std::string> g_loaded;    // key each action got at startup
+std::map<std::string, std::string> g_announced; // combination changes the player was told about
 
 thread_local bool t_busy = false;
 
@@ -161,7 +167,14 @@ bool GenerateMappings(LPCWSTR aMerged)
             std::lock_guard lock(g_mutex);
             actions = g_actions;
         }
-        auto marked = Keybinds::MarkRebindable(aMerged, actions);
+        // Combinations picked in the menu ("modifier+key"), from the stored keys.
+        std::map<std::string, std::string> combos;
+        for (const auto& [name, key] : UserSettings::SavedKeys(g_store))
+        {
+            if (key.find('+') != std::string::npos)
+                combos[name] = key;
+        }
+        auto marked = Keybinds::MarkRebindable(aMerged, actions, combos, Log);
         if (marked.empty())
             return;
         std::ofstream out(g_mappings, std::ios::binary | std::ios::trunc);
@@ -425,6 +438,39 @@ void Native_SetKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, 
     InputOverrides::Set(out);
 }
 
+// Keys of a key combination: one a mod binds an action to (its buttonGroup id), or one picked in the
+// menu ("modifier+key"). Empty for anything else.
+void Native_ComboKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
+                      int64_t)
+{
+    RED4ext::CName value;
+    RED4ext::GetParameter(aFrame, &value);
+    aFrame->code++;
+    if (!aOut || value.IsNone())
+        return;
+
+    std::string id = value.ToString();
+    // A combination picked in the menu: "modifier+key".
+    if (auto plus = id.find('+'); plus != std::string::npos)
+    {
+        aOut->PushBack(RED4ext::CName(id.substr(0, plus).c_str()));
+        aOut->PushBack(RED4ext::CName(id.substr(plus + 1).c_str()));
+        return;
+    }
+
+    EnsureCollected();
+    std::lock_guard lock(g_mutex);
+    for (const auto& a : g_actions)
+    {
+        if (a.defaultKey == id && !a.combo.empty())
+        {
+            for (const auto& k : a.combo)
+                aOut->PushBack(RED4ext::CName(k.c_str()));
+            return;
+        }
+    }
+}
+
 // Stored keys, for the first time the game applies its bindings.
 void SetStoredKeys()
 {
@@ -434,9 +480,140 @@ void SetStoredKeys()
     {
         std::lock_guard lock(g_mutex);
         for (const auto& a : g_actions)
+        {
             out.push_back({a.name, a.mappings, saved.contains(a.name) ? saved[a.name] : a.defaultKey});
+            g_loaded[a.name] = out.back().key;
+        }
     }
     InputOverrides::Set(out);
+}
+
+// While an entry waits for a key: the modifier (Shift, Ctrl, Alt) that was held when another key
+// went down. The menu binds a key only once every key is released, too late to ask then.
+struct ModifierWatch
+{
+    std::mutex mutex;
+    std::thread thread;
+    std::atomic<bool> running = false;
+    std::string modifier; // result
+};
+ModifierWatch g_watch;
+
+const std::pair<int, const char*> kModifierKeys[] = {{VK_LCONTROL, "IK_LControl"}, {VK_RCONTROL, "IK_RControl"},
+                                                    {VK_LSHIFT, "IK_LShift"},     {VK_RSHIFT, "IK_RShift"},
+                                                    {VK_LMENU, "IK_Alt"},         {VK_RMENU, "IK_Alt"}};
+
+bool IsModifierVk(int aVk)
+{
+    if (aVk == VK_SHIFT || aVk == VK_CONTROL || aVk == VK_MENU)
+        return true;
+    for (const auto& [vk, name] : kModifierKeys)
+    {
+        if (vk == aVk)
+            return true;
+    }
+    return false;
+}
+
+void StopWatch()
+{
+    g_watch.running = false;
+    if (g_watch.thread.joinable())
+        g_watch.thread.join();
+}
+
+void StartWatch()
+{
+    StopWatch();
+    {
+        std::lock_guard lock(g_watch.mutex);
+        g_watch.modifier.clear();
+    }
+    g_watch.running = true;
+    g_watch.thread = std::thread([] {
+        // Keys already down when the entry started waiting (the click) don't count.
+        std::array<bool, 256> wasDown{};
+        for (int vk = 1; vk < 256; ++vk)
+            wasDown[vk] = GetAsyncKeyState(vk) & 0x8000;
+        for (int i = 0; i < 1000 && g_watch.running; ++i) // 10 s at most
+        {
+            std::string held;
+            for (const auto& [vk, name] : kModifierKeys)
+            {
+                if (GetAsyncKeyState(vk) & 0x8000)
+                {
+                    held = name;
+                    break;
+                }
+            }
+            for (int vk = 1; vk < 256; ++vk)
+            {
+                bool down = GetAsyncKeyState(vk) & 0x8000;
+                if (down && !wasDown[vk] && !IsModifierVk(vk))
+                {
+                    std::lock_guard lock(g_watch.mutex);
+                    g_watch.modifier = held;
+                    g_watch.running = false;
+                    return;
+                }
+                wasDown[vk] = down;
+            }
+            Sleep(10);
+        }
+        g_watch.running = false;
+    });
+}
+
+void Native_WatchModifier(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    aFrame->code++;
+    StartWatch();
+}
+
+// The modifier held when the bound key went down, or None; ends the watch.
+void Native_HeldModifier(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+{
+    aFrame->code++;
+    StopWatch();
+    std::lock_guard lock(g_watch.mutex);
+    if (aOut)
+        *aOut = g_watch.modifier.empty() ? RED4ext::CName() : RED4ext::CName(g_watch.modifier.c_str());
+}
+
+bool IsCombo(const Keybinds::Action& aAction, const std::string& aKey)
+{
+    return aKey.find('+') != std::string::npos || (aKey == aAction.defaultKey && !aAction.combo.empty());
+}
+
+// True when the keys the menu holds change a key combination compared to startup (those only
+// apply after a restart), and the player wasn't told about these changes yet.
+void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    RED4ext::DynArray<RED4ext::CName> names;
+    RED4ext::DynArray<RED4ext::CName> keys;
+    RED4ext::GetParameter(aFrame, &names);
+    RED4ext::GetParameter(aFrame, &keys);
+    aFrame->code++;
+
+    std::map<std::string, std::string> pending;
+    {
+        std::lock_guard lock(g_mutex);
+        for (uint32_t i = 0; i < names.size() && i < keys.size(); ++i)
+        {
+            std::string name = names[i].ToString();
+            std::string key = keys[i].ToString();
+            auto loaded = g_loaded.find(name);
+            auto action = std::find_if(g_actions.begin(), g_actions.end(), [&](const auto& a) { return a.name == name; });
+            if (loaded == g_loaded.end() || action == g_actions.end() || key == loaded->second)
+                continue;
+            if (IsCombo(*action, key) || IsCombo(*action, loaded->second))
+                pending[name] = key;
+        }
+    }
+    bool notice = !pending.empty() && pending != g_announced;
+    g_announced = pending;
+    if (aOut)
+        *aOut = notice;
 }
 
 void RegisterTypes()
@@ -488,6 +665,32 @@ void PostRegisterTypes()
     setKeys->AddParam("array:CName", "names");
     setKeys->AddParam("array:CName", "keys");
     rtti->RegisterFunction(setKeys);
+
+    auto comboKeys =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_ComboKeys", "ModKeybindsMenu_ComboKeys", &Native_ComboKeys);
+    comboKeys->flags = flags;
+    comboKeys->AddParam("CName", "value");
+    comboKeys->SetReturnType("array:CName");
+    rtti->RegisterFunction(comboKeys);
+
+    auto restartNotice = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RestartNotice", "ModKeybindsMenu_RestartNotice",
+                                                          &Native_RestartNotice);
+    restartNotice->flags = flags;
+    restartNotice->AddParam("array:CName", "names");
+    restartNotice->AddParam("array:CName", "keys");
+    restartNotice->SetReturnType("Bool");
+    rtti->RegisterFunction(restartNotice);
+
+    auto watchModifier = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_WatchModifier", "ModKeybindsMenu_WatchModifier",
+                                                          &Native_WatchModifier);
+    watchModifier->flags = flags;
+    rtti->RegisterFunction(watchModifier);
+
+    auto heldModifier = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_HeldModifier", "ModKeybindsMenu_HeldModifier",
+                                                         &Native_HeldModifier);
+    heldModifier->flags = flags;
+    heldModifier->SetReturnType("CName");
+    rtti->RegisterFunction(heldModifier);
 
     SetStoredKeys();
 }
@@ -557,6 +760,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
     }
     case RED4ext::v1::EMainReason::Unload:
     {
+        StopWatch();
         InputOverrides::Detach(aSdk, aHandle);
         auto target = GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "CreateFileW");
         if (target && g_createFileW)
@@ -574,7 +778,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 1, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 1, 1);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

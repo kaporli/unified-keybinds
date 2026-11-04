@@ -78,7 +78,9 @@ public class ModKeybindsSystem extends ScriptableSystem {
         // so a session starts with them empty: take Mod Settings' key, else the saved one,
         // else the key from the mod's input file.
         let wanted = IsDefined(kb) ? kb.GetValueName() : menu.GetValue();
-        if Equals(wanted, n"None") && NotEquals(saved[i], n"None") {
+        // Mod Settings holds one key: a key combination picked in this menu stays.
+        let savedCombo = StrContains(NameToString(saved[i]), "+");
+        if (Equals(wanted, n"None") || savedCombo) && NotEquals(saved[i], n"None") {
           wanted = saved[i];
         }
         if Equals(wanted, n"None") {
@@ -113,7 +115,9 @@ public class ModKeybindsSystem extends ScriptableSystem {
       ModKeybindsMenu_SetKeys([name], [menu.GetValue()]);
     }
     let kb = this.ModSettingsVar(name);
-    if IsDefined(menu) && IsDefined(kb) && NotEquals(menu.GetValue(), kb.GetValueName()) {
+    // A key combination can't go into Mod Settings.
+    if IsDefined(menu) && IsDefined(kb) && NotEquals(menu.GetValue(), kb.GetValueName())
+      && !StrContains(NameToString(menu.GetValue()), "+") {
       this.m_busy = true;
       kb.SetValueName(menu.GetValue());
       ModSettings.AcceptChanges();

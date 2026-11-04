@@ -23,6 +23,7 @@ struct Button
     std::string id;
     std::size_t order;
     std::vector<std::string> mappings; // mappings that carry the action
+    std::vector<std::string> combo;    // keys of a key combination (buttonGroup), else empty
 };
 
 bool IsPad(const std::string& aKey)
@@ -30,9 +31,11 @@ bool IsPad(const std::string& aKey)
     return aKey.rfind("IK_Pad", 0) == 0 || aKey.rfind("IK_Joy", 0) == 0;
 }
 
+using Groups = std::map<std::string, std::vector<std::string>>; // buttonGroup id -> its keys
+
 // The only keyboard or mouse button of a Button mapping that has no overridableUI, or an
-// empty node. Key combos (buttonGroup ids) don't count, the menu holds one key per action.
-pugi::xml_node SingleKey(pugi::xml_node aMapping, const std::set<std::string>& aGroups)
+// empty node. A keyboard key combination (buttonGroup) counts as one button.
+pugi::xml_node SingleKey(pugi::xml_node aMapping, const Groups& aGroups)
 {
     if (std::string(aMapping.attribute("type").as_string("Button")) != "Button" || !*aMapping.attribute("name").as_string())
         return {};
@@ -42,7 +45,8 @@ pugi::xml_node SingleKey(pugi::xml_node aMapping, const std::set<std::string>& a
         if (button.attribute("overridableUI"))
             return {};
         std::string id = button.attribute("id").as_string();
-        if (id.rfind("IK_", 0) != 0 || IsPad(id) || aGroups.contains(id))
+        auto group = aGroups.find(id);
+        if (id.rfind("IK_", 0) != 0 || IsPad(id) || (group != aGroups.end() && group->second.empty()))
             continue;
         if (key)
             return {};
@@ -51,11 +55,25 @@ pugi::xml_node SingleKey(pugi::xml_node aMapping, const std::set<std::string>& a
     return key;
 }
 
-std::set<std::string> GroupIds(const pugi::xml_document& aDoc)
+// Keys of each buttonGroup; empty for groups with a gamepad button.
+Groups ReadGroups(const pugi::xml_document& aDoc)
 {
-    std::set<std::string> out;
+    Groups out;
     for (auto group : aDoc.child("bindings").children("buttonGroup"))
-        out.insert(group.attribute("id").as_string());
+    {
+        std::vector<std::string> keys;
+        for (auto button : group.children("button"))
+        {
+            std::string id = button.attribute("id").as_string();
+            if (IsPad(id))
+            {
+                keys.clear();
+                break;
+            }
+            keys.push_back(id);
+        }
+        out[group.attribute("id").as_string()] = keys;
+    }
     return out;
 }
 
@@ -68,14 +86,16 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
     if (!doc.load_file(aFile.c_str()))
         return out;
 
-    auto groups = GroupIds(doc);
+    auto groups = ReadGroups(doc);
     std::size_t order = 0;
     for (auto mapping : doc.child("bindings").children("mapping"))
     {
         if (auto key = SingleKey(mapping, groups))
         {
             std::string name = mapping.attribute("name").as_string();
-            out.emplace(name, Button{key.attribute("id").as_string(), order++, {name}});
+            std::string id = key.attribute("id").as_string();
+            auto group = groups.find(id);
+            out.emplace(name, Button{id, order++, {name}, group != groups.end() ? group->second : std::vector<std::string>{}});
             continue;
         }
         for (auto button : mapping.children("button"))
@@ -392,6 +412,7 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
 
         Action action{name, button.id};
         action.mappings = button.mappings;
+        action.combo = button.combo;
         if (auto it = files.sections.find(name); it != files.sections.end())
             action.section = it->second;
         else if (auto src = sources.find(name); src != sources.end())
@@ -422,7 +443,14 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
     return out;
 }
 
-std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<Action>& aActions)
+namespace
+{
+// Most key combinations (buttonGroups) the game was seen to load: 30 ran, 33 crashed it.
+constexpr std::size_t kMaxCombos = 30;
+} // namespace
+
+std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<Action>& aActions,
+                                     const std::map<std::string, std::string>& aCombos, const LogFn& aLog)
 {
     pugi::xml_document doc;
     if (!doc.load_file(aMerged.c_str()))
@@ -432,7 +460,7 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     for (const auto& a : aActions)
         names.insert(a.name);
 
-    auto groups = GroupIds(doc);
+    auto groups = ReadGroups(doc);
     bool changed = false;
     for (auto mapping : doc.child("bindings").children("mapping"))
     {
@@ -440,6 +468,46 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
         if (key && names.contains(mapping.attribute("name").as_string()))
         {
             key.append_attribute("overridableUI") = mapping.attribute("name").value();
+            changed = true;
+        }
+    }
+
+    // Key combinations picked in the menu go into the action's own mapping: the game only watches
+    // combinations that an action uses when it loads them. It crashes with more than about 30
+    // combinations in all, so beyond that an action keeps its key.
+    auto bindings = doc.child("bindings");
+    std::size_t count = groups.size();
+    std::set<std::string> declared;
+    for (auto mapping : bindings.children("mapping"))
+    {
+        for (auto button : mapping.children("button"))
+        {
+            auto combo = aCombos.find(button.attribute("overridableUI").as_string());
+            std::string id = button.attribute("id").as_string();
+            auto plus = combo != aCombos.end() ? combo->second.find('+') : std::string::npos;
+            if (plus == std::string::npos || IsPad(id))
+                continue;
+            auto modifier = combo->second.substr(0, plus);
+            auto key = combo->second.substr(plus + 1);
+            auto groupId = "ModKeybindsMenu_" + modifier + "_" + key;
+            if (!declared.contains(groupId))
+            {
+                if (count >= kMaxCombos)
+                {
+                    aLog("Too many key combinations (the game allows about " + std::to_string(kMaxCombos) + "), " +
+                         combo->first + " keeps its key");
+                    continue;
+                }
+                // Room to press the modifier a moment before the key.
+                auto group = bindings.prepend_child("buttonGroup");
+                group.append_attribute("id") = groupId.c_str();
+                group.append_attribute("timeWindow") = "0.5f";
+                group.append_child("button").append_attribute("id") = modifier.c_str();
+                group.append_child("button").append_attribute("id") = key.c_str();
+                declared.insert(groupId);
+                ++count;
+            }
+            button.attribute("id") = groupId.c_str();
             changed = true;
         }
     }
