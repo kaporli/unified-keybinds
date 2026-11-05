@@ -20,9 +20,10 @@ public class ModKeybindsComboEvent extends Event {}
 protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
   if e.IsAction(n"click") || e.IsAction(n"tap") {
     let v = this.m_SettingsEntry as ConfigVarName;
-    // Native Settings UI and RCF mods read a single key.
+    let padNames = ModKeybindsMenu_PadNames();
+    // Native Settings UI and RCF mods read a single key, and controller buttons go alone.
     if IsDefined(v) && ModKeybindsIsModGroup(v) && !StrBeginsWith(NameToString(v.GetName()), "NSUI_")
-      && !ModKeybindsRcf.IsRcfKey(v.GetName()) {
+      && !ModKeybindsRcf.IsRcfKey(v.GetName()) && !ArrayContains(padNames, v.GetName()) {
       this.m_modKeybindsBinding = true;
       ModKeybindsMenu_WatchModifier();
     }
@@ -76,7 +77,7 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   let notice = ModKeybindsMenu_RestartNotice(names, keys);
   if notice {
     // The token has to be kept, or the popup closes at once.
-    this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Native Mod Keybinds", "New key combinations apply after you restart the game. Single keys apply right away.", GenericMessageNotificationType.OK);
+    this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Unified Keybinds", "New key combinations apply after you restart the game. Single keys apply right away.", GenericMessageNotificationType.OK);
     this.m_modKeybindsPopup.RegisterListener(this, n"OnModKeybindsPopupClosed");
   }
 }

@@ -1,15 +1,17 @@
-# Native Mod Keybinds
+# Unified Keybinds
 
-Every mod's keybinds in the game's own Key Bindings menu.
+Every mod key and controller button, rebindable in the vanilla menu.
 
-Rebind any mod key, even ones the mod never made rebindable, and set key combinations, all next to the vanilla keys.
+Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, vanilla and modded, all in the game's own Key Bindings menu.
 
-Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to Settings > Controls > Key Bindings with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
+Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to Settings > Controls > Key Bindings with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
+
+Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and folders keep their names, so updating works as before.
 
 ## Limitations
 
 > [!WARNING]
-> - Keyboard and mouse only: controller keys are left out. Redscript Configuration Framework mods keep theirs in RCF's hub. I'm looking into supporting them.
+> - Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.
 > - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
 > - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
 > - Redscript Configuration Framework keys (the DigitalVixen mods, for example) appear from the second launch after you install the mod, and take a single key only.
@@ -30,7 +32,7 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 | Redscript Configuration Framework | Yes | Its own keys are in Input Loader files and Mod Settings. Its hub key (F8) is kept in sync with its Options |
 | Native Settings UI | Yes | From the second launch, single keys |
 | Unified Mod Settings | Yes | Edits Native Settings UI and Mod Settings keys, which show up here |
-| Redscript Configuration Framework hub, for example the DigitalVixen mods | Yes | From the second launch, single keys, with the mod's own names. Kept in sync with the hub both ways. Gamepad keys are not supported yet: they stay in the hub, and I'm looking into it |
+| Redscript Configuration Framework hub, for example the DigitalVixen mods | Yes | From the second launch, single keys and controller buttons, with the mod's own names. Kept in sync with the hub both ways |
 | Cyber Engine Tweaks hotkeys (`registerHotkey`, `registerInput`) | No | Stay in the CET overlay |
 
 ## Screenshots
@@ -43,6 +45,10 @@ Each mod gets its own section below the vanilla keys:
 
 ![The Enhanced Vehicle System section with the key combinations Ctrl + K and F1 + 1](screenshots/key-bindings-key-combinations.jpg)
 
+With a controller, the menu shows controller buttons. Here Quicksave is rebound from Y to the D-pad:
+
+![Key Bindings in the controller view, Quicksave rebound to the D-pad](screenshots/key-bindings-controller.jpg)
+
 ## Features
 
 - One section per mod in Settings > Controls > Key Bindings, for example *"Mod: Let There Be Flight"* or *"Mod: Stash QoL"*, built at startup from the mods you have installed. Add or remove a mod and the sections follow.
@@ -51,6 +57,7 @@ Each mod gets its own section below the vanilla keys:
 - Key combinations are shown as their keys (for example *"F2 + 2"*) and can be rebound to a single key. Defaults puts the combination back from the next launch.
 - Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example *"Ctrl + K"*. A modifier pressed on its own is bound alone.
 - A changed key applies right away, also for mods without a Mod Settings option.
+- Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons, for vanilla actions and mod actions alike, with the game's own section names and labels. It switches back when you use the keyboard. A controller entry takes only controller buttons and a keyboard entry only keys.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 - Also lists the keys of mods that keep them in Redscript Configuration Framework (for example DigitalVixen's Shattered Chrome, Chrome Plating or Injuries), with the mod's own names. A key changed here or in RCF's hub changes both.
@@ -113,6 +120,7 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - The menu shows labels through the game's translation system, so `options.json` holds keys like `ModKeybindsMenu-itsHotkey` and the scripts register the label text for every language through Codeware.
 - A small CET script (`bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua`) reads the key bindings in Native Settings UI and hands them to the plugin, which lists them from the next launch (`r6/cache/modkeybinds/nativesettings.json`). A key changed in Key Bindings goes to the mod through Native Settings UI when changes are applied or the settings menu closes; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself goes to Key Bindings within a second.
 - Mods that use Redscript Configuration Framework bind their actions to an empty `buttonGroup` and RCF puts the key in place. RCF stores each mod's page and values in `r6/storages/RedscriptConfigFramework` (`<mod>.cached.json`, `<mod>.json`); the plugin lists the keys from there with RCF's labels and the mod's current key, and leaves out placeholder actions RCF doesn't list. The menu entry sets the binding, so the scripts copy a change to RCF (`DVRCF.SetInt`, or RCF's settings for its hub key) and check RCF every 2 seconds, when a session starts and when the settings menu opens, to copy changes made in its hub.
+- Controller entries: the game's key binding entries take keyboard keys only. For every action (vanilla or mod) whose mappings hold exactly one controller button without `overridableUI`, the plugin adds an entry named `MKPad_<action>` and gives that button the name as `overridableUI` in the copy of the mappings the game reads. Vanilla ones go in sections named after the game's, with its labels. The scripts show controller entries while the last device used is a controller (the game's `InputSchemes.Device` blackboard) and the keyboard entries otherwise, and rebuild the list when the device changes. The ApplyOverrides hook sets controller buttons only for controller entries.
 - Defaults resets an entry to the key the game knows for it, which it only knows for its own actions, so the scripts set mod entries to the mod's key.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
@@ -121,7 +129,7 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 Needs Visual Studio 2022 Build Tools (C++ workload), CMake and Ninja.
 
 ```
-git clone --recursive https://github.com/kaporli/native-mod-keybinds
+git clone --recursive https://github.com/kaporli/unified-keybinds
 tools\package.ps1
 ```
 

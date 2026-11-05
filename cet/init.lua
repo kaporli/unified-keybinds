@@ -1,4 +1,4 @@
--- Native Mod Keybinds: lists key bindings that mods add through Native Settings UI in
+-- Unified Keybinds: lists key bindings that mods add through Native Settings UI in
 -- Settings > Controls > Key Bindings, and keeps both menus in sync.
 --
 -- Those bindings only exist here, after the menu sections are built, so they are reported to the

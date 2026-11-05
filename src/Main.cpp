@@ -119,9 +119,13 @@ bool Generate(const fs::path& aBase)
             if (std::none_of(actions.begin(), actions.end(), [&](const auto& b) { return b.name == a.name; }))
                 actions.push_back(std::move(a));
         }
-        // One run per section, also when a mod has keys in both.
-        std::stable_sort(actions.begin(), actions.end(),
-                         [](const auto& a, const auto& b) { return a.section < b.section; });
+        // One run per section, also when a mod has keys in both. Vanilla controller sections first.
+        std::stable_sort(actions.begin(), actions.end(), [](const auto& a, const auto& b) {
+            bool va = !a.group.empty(), vb = !b.group.empty();
+            if (va || vb)
+                return va && !vb;
+            return a.section < b.section;
+        });
     }
     auto merged = Keybinds::MergeOptions(base, actions);
     if (merged.empty())
@@ -148,7 +152,7 @@ bool Generate(const fs::path& aBase)
         g_collected = true;
         Log(std::to_string(g_actions.size()) + " actions");
         for (const auto& a : g_actions)
-            Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"");
+            Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"" + (a.pad ? " (controller)" : ""));
     }
     return true;
 }
@@ -376,12 +380,28 @@ void ReturnStrings(RED4ext::DynArray<RED4ext::CString>* aOut, bool aKeys)
         {
             section = a.section;
             auto key = Keybinds::SectionKey(a);
-            if (key.rfind("LocKey#", 0) != 0)
+            if (key.rfind("LocKey#", 0) != 0 && a.sectionKey.empty())
                 aOut->PushBack(RED4ext::CString((aKeys ? key : Keybinds::SectionText(a)).c_str()));
         }
         auto key = Keybinds::LabelKey(a);
         if (key.rfind("LocKey#", 0) != 0 && a.labelKey.empty())
             aOut->PushBack(RED4ext::CString((aKeys ? key : a.label).c_str()));
+    }
+}
+
+// Names of the controller entries.
+void Native_PadNames(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
+                     int64_t)
+{
+    aFrame->code++;
+    if (!aOut)
+        return;
+    EnsureCollected();
+    std::lock_guard lock(g_mutex);
+    for (const auto& a : g_actions)
+    {
+        if (a.pad)
+            aOut->PushBack(RED4ext::CName(a.name.c_str()));
     }
 }
 
@@ -459,7 +479,7 @@ void Native_SetKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, 
         for (const auto& a : g_actions)
         {
             if (a.name == name)
-                out.push_back({name, a.mappings, keys[i].ToString()});
+                out.push_back({name, a.mappings, keys[i].ToString(), a.pad});
         }
     }
     InputOverrides::Set(out);
@@ -508,7 +528,7 @@ void SetStoredKeys()
         std::lock_guard lock(g_mutex);
         for (const auto& a : g_actions)
         {
-            out.push_back({a.name, a.mappings, Keybinds::StartKey(a, saved)});
+            out.push_back({a.name, a.mappings, Keybinds::StartKey(a, saved), a.pad});
             g_loaded[a.name] = out.back().key;
         }
     }
@@ -709,6 +729,12 @@ void PostRegisterTypes()
     texts->SetReturnType("array:String");
     rtti->RegisterFunction(texts);
 
+    auto padNames =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadNames", "ModKeybindsMenu_PadNames", &Native_PadNames);
+    padNames->flags = flags;
+    padNames->SetReturnType("array:CName");
+    rtti->RegisterFunction(padNames);
+
     auto rcfMods =
         RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RcfMods", "ModKeybindsMenu_RcfMods", &Native_RcfMods);
     rcfMods->flags = flags;
@@ -841,7 +867,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 3, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 4, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

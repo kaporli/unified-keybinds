@@ -15,8 +15,8 @@ namespace Rcf
 // Mod id of RCF's own settings, which hold the key that opens its hub.
 inline constexpr const char* kFrameworkId = "_DVRCF_Framework";
 
-// Gives the actions RCF lists RCF's section, label, default and current key, in RCF's order.
-// Leaves out the gamepad keys RCF lists (RCF applies those) and placeholder actions RCF doesn't
-// list (keys of a mod that isn't installed, or that RCF has not seen yet).
+// Gives the actions RCF lists RCF's section, label, default and current key, in RCF's order;
+// its gamepad keys become controller entries. Leaves out placeholder actions RCF doesn't list
+// (keys of a mod that isn't installed, or that RCF has not seen yet).
 void Apply(const std::filesystem::path& aRoot, std::vector<Keybinds::Action>& aActions, const Keybinds::LogFn& aLog);
 } // namespace Rcf

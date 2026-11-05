@@ -61,6 +61,7 @@ struct Entry
     std::vector<RED4ext::CName> mappings;
     uint16_t key;
     bool original; // the binding loaded at startup, e.g. a key combination
+    bool pad;      // a controller entry
 };
 
 struct Original
@@ -126,7 +127,8 @@ bool Apply(Manager* aManager)
                     continue;
                 auto& original = g_originals.try_emplace({mapName.hash, entry.hash}, Original{mapping.key, mapping.keyFull})
                                      .first->second;
-                if (pad.contains(original.key))
+                // A keyboard entry leaves a controller button that shares its name alone.
+                if (pad.contains(original.key) && !entry.pad)
                     continue;
                 uint16_t key = entry.original ? original.key : entry.key;
                 uint32_t keyFull = entry.original ? original.keyFull : key;
@@ -186,7 +188,7 @@ void InputOverrides::Set(const std::vector<Key>& aKeys)
             // A name that is no key (a key combination) means the binding loaded at startup: the
             // game only takes combinations from its input files.
             auto key = byName.find(RED4ext::CName(k.key.c_str()));
-            Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, 0, key == byName.end()};
+            Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, 0, key == byName.end(), k.pad};
             if (!entry.original)
                 entry.key = key->second;
             for (const auto& m : k.mappings)

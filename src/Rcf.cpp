@@ -170,8 +170,7 @@ void Rcf::Apply(const fs::path& aRoot, std::vector<Keybinds::Action>& aActions, 
             continue;
         }
         const auto& key = it->second;
-        if (key.pad)
-            continue;
+        a.pad = key.pad;
         a.modId = key.modId;
         a.section = key.section;
         if (IsTranslationKey(key.labelKey))

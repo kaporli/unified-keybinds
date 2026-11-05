@@ -21,7 +21,15 @@ struct Action
     bool placeholder = false;          // bound to an empty buttonGroup, another mod fills in the key
     std::string modId;                 // RCF: the mod that keeps this key, else empty
     std::string labelKey;              // translation key the mod registers for the label, else empty
+    bool pad = false;                  // a controller button: shown while a controller is in use
+    std::string group;                 // settings group, when not the section's own (vanilla controller keys)
+    std::string sectionKey;            // translation key of the section header, when the game has one
+    std::vector<std::string> labelKeys; // keys filled into a label like "% / %", as the game's own entries do
 };
+
+// Prefix of the controller entries this mod adds for an action that has a keyboard entry; the
+// rest of the name is that entry's. Its controller button gets this as overridableUI.
+inline constexpr const char* kPadPrefix = "MKPad_";
 
 // The key an action starts a session with: RCF's for keys it keeps (the scripts copy every
 // change to RCF), else the one saved in the menu, else the mod's.
@@ -48,8 +56,10 @@ using LogFn = std::function<void(const std::string&)>;
 
 // Mod-added actions: overridableUI names in Input Loader's merged mappings that the base
 // mappings and the base options.json don't already have, plus mod mappings with a single
-// key and no overridableUI (by mapping name). Gamepad-only actions are skipped.
-// Sorted by section.
+// key and no overridableUI (by mapping name). Controller entries: a mod's own controller
+// overridableUI, and for each keyboard action (mod or vanilla) whose mappings hold exactly one
+// controller button without one, an entry named kPadPrefix + the action.
+// Sorted by section; vanilla controller entries first, in the game's order.
 std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::string& aBaseOptions, const LogFn& aLog);
 
 // Merged mappings (aMerged) with overridableUI added to the single-key mappings in aActions,

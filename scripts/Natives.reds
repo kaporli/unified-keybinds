@@ -12,6 +12,9 @@ public static native func ModKeybindsMenu_Groups() -> array<CName>
 // Key each action starts a session with: RCF's for keys RCF keeps, else the last one saved outside UserSettings.json ("None" if none), same order as ModKeybindsMenu_Names
 public static native func ModKeybindsMenu_Saved() -> array<CName>
 
+// Names of the controller entries, shown while a controller is in use
+public static native func ModKeybindsMenu_PadNames() -> array<CName>
+
 // Redscript Configuration Framework mod that keeps each action's key, else empty, same order as ModKeybindsMenu_Names
 public static native func ModKeybindsMenu_RcfMods() -> array<String>
 

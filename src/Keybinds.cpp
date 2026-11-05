@@ -25,6 +25,9 @@ struct Button
     std::vector<std::string> mappings; // mappings that carry the action
     std::vector<std::string> combo;    // keys of a key combination (buttonGroup), else empty
     bool placeholder = false;          // an empty buttonGroup
+    // Controller buttons without overridableUI in the mappings that carry the action, with those mappings.
+    std::map<std::string, std::vector<std::string>> pads;
+    std::string type = "Button";       // type of the first mapping
 };
 
 bool IsPad(const std::string& aKey)
@@ -33,6 +36,13 @@ bool IsPad(const std::string& aKey)
 }
 
 using Groups = std::map<std::string, std::vector<std::string>>; // buttonGroup id -> its keys
+
+// A single controller button: not a stick axis, not a buttonGroup.
+bool IsPadButton(const std::string& aKey, const Groups& aGroups)
+{
+    return aKey.rfind("IK_Pad", 0) == 0 && aKey.find("Axis") == std::string::npos &&
+           aKey.find("Fake") == std::string::npos && !aGroups.contains(aKey);
+}
 
 // The only keyboard or mouse button of a Button mapping that has no overridableUI, or an
 // empty node. A keyboard key combination (buttonGroup) counts as one button.
@@ -115,7 +125,10 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
 
             auto it = out.find(name);
             if (it == out.end())
+            {
                 it = out.emplace(name, Button{id, order++, {}, {}, empty.contains(id)}).first;
+                it->second.type = mapping.attribute("type").as_string("Button");
+            }
             else if (IsPad(it->second.id) && !IsPad(id))
             {
                 it->second.id = id;
@@ -124,6 +137,17 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
             std::string mapName = mapping.attribute("name").as_string();
             if (std::find(it->second.mappings.begin(), it->second.mappings.end(), mapName) == it->second.mappings.end())
                 it->second.mappings.push_back(mapName);
+            if (std::string(mapping.attribute("type").as_string("Button")) != "Button")
+                continue;
+            for (auto other : mapping.children("button"))
+            {
+                std::string padId = other.attribute("id").as_string();
+                if (other.attribute("overridableUI") || !IsPadButton(padId, groups))
+                    continue;
+                auto& maps = it->second.pads[padId];
+                if (std::find(maps.begin(), maps.end(), mapName) == maps.end())
+                    maps.push_back(mapName);
+            }
         }
     }
     return out;
@@ -386,11 +410,15 @@ std::string Keybinds::StartKey(const Action& aAction, const std::map<std::string
 
 std::string Keybinds::GroupPath(const Action& aAction)
 {
+    if (!aAction.group.empty())
+        return aAction.group;
     return kGroupPrefix + Slug(aAction.section);
 }
 
 std::string Keybinds::SectionKey(const Action& aAction)
 {
+    if (!aAction.sectionKey.empty())
+        return aAction.sectionKey;
     if (aAction.section.rfind("LocKey#", 0) == 0)
         return aAction.section;
     return std::string(kLabelKeyPrefix) + "Section-" + Slug(aAction.section);
@@ -429,13 +457,19 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
     std::vector<std::pair<Button, Action>> found;
     for (const auto& [name, button] : merged)
     {
-        if (base.contains(name) || listed.contains(name) || IsPad(button.id))
+        if (base.contains(name) || listed.contains(name))
+            continue;
+        // A controller binding of the mod's own, if it is a single button.
+        bool pad = IsPad(button.id);
+        if (pad && (button.type != "Button" || button.id.find("Axis") != std::string::npos ||
+                    button.id.find("Fake") != std::string::npos || !button.combo.empty()))
             continue;
 
         Action action{name, button.id};
         action.mappings = button.mappings;
         action.combo = button.combo;
         action.placeholder = button.placeholder;
+        action.pad = pad;
         if (auto it = files.sections.find(name); it != files.sections.end())
             action.section = it->second;
         else if (auto src = sources.find(name); src != sources.end())
@@ -449,8 +483,34 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
             action.label = ActionName(name, action.section);
         else
             action.label = Humanize(name);
+        // Only shown while a controller is in use, so the word adds nothing.
+        if (pad)
+        {
+            for (const char* word : {" Gamepad", " Pad", " Controller"})
+            {
+                std::string w = word;
+                if (action.label.size() > w.size() && action.label.compare(action.label.size() - w.size(), w.size(), w) == 0)
+                    action.label.erase(action.label.size() - w.size());
+            }
+        }
 
+        // The controller button next to the key, when it is the only one.
+        Action padAction;
+        bool addPad = !pad && !action.placeholder && button.pads.size() == 1;
+        if (addPad)
+        {
+            const auto& [padId, padMaps] = *button.pads.begin();
+            padAction.name = kPadPrefix + name;
+            padAction.defaultKey = padId;
+            padAction.mappings = padMaps;
+            padAction.section = action.section;
+            padAction.label = action.label;
+            padAction.labelKey = LabelKey(action);
+            padAction.pad = true;
+        }
         found.push_back({button, std::move(action)});
+        if (addPad)
+            found.push_back({button, std::move(padAction)});
     }
 
     // One section per mod, sorted by name; actions keep their mod's own order.
@@ -460,7 +520,61 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         return a.first.order < b.first.order;
     });
 
+    // Vanilla controller buttons: the game's key binding entries take keyboard keys only, so each
+    // gets a controller entry in a section of ours named like the game's.
     std::vector<Action> out;
+    if (!baseOptions.is_discarded() && baseOptions.contains("groups") && baseOptions.contains("options"))
+    {
+        std::vector<std::pair<int, json>> groups;
+        for (const auto& g : baseOptions["groups"])
+        {
+            std::string path = g.value("group_name", "");
+            if (path.rfind("/key_bindings/", 0) == 0 && !IsModGroup(path))
+                groups.push_back({g.value("order", 0), g});
+        }
+        std::stable_sort(groups.begin(), groups.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [groupOrder, g] : groups)
+        {
+            std::string path = g.value("group_name", "");
+            for (const auto& list : baseOptions["options"])
+            {
+                if (list.value("group_name", "") != path || !list.contains("options"))
+                    continue;
+                std::vector<json> options(list["options"].begin(), list["options"].end());
+                std::stable_sort(options.begin(), options.end(),
+                                 [](const json& a, const json& b) { return a.value("order", 0) < b.value("order", 0); });
+                for (const auto& opt : options)
+                {
+                    std::string name = opt.value("name", "");
+                    auto it = merged.find(name);
+                    if (!opt.value("is_input", false) || !opt.value("is_visible", true) || it == merged.end() ||
+                        it->second.pads.size() != 1)
+                        continue;
+                    const auto& [padId, padMaps] = *it->second.pads.begin();
+                    Action a;
+                    a.name = kPadPrefix + name;
+                    a.defaultKey = padId;
+                    a.mappings = padMaps;
+                    a.section = path.substr(path.rfind('/') + 1);
+                    a.label = name;
+                    a.labelKey = opt.value("display_name", name);
+                    if (opt.contains("display_name_keys") && opt["display_name_keys"].is_array())
+                    {
+                        for (const auto& k : opt["display_name_keys"])
+                        {
+                            if (k.is_string())
+                                a.labelKeys.push_back(k.get<std::string>());
+                        }
+                    }
+                    a.group = std::string(kGroupPrefix) + "Pad" + Slug(a.section);
+                    a.sectionKey = g.value("display_name", a.section);
+                    a.pad = true;
+                    out.push_back(std::move(a));
+                }
+            }
+        }
+    }
+
     for (auto& [button, action] : found)
         out.push_back(std::move(action));
     return out;
@@ -480,8 +594,17 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
         return {};
 
     std::set<std::string> names;
+    // Controller entries of ours: mapping -> (button id -> entry name).
+    std::map<std::string, std::map<std::string, std::string>> padNames;
     for (const auto& a : aActions)
+    {
         names.insert(a.name);
+        if (a.name.rfind(kPadPrefix, 0) == 0)
+        {
+            for (const auto& m : a.mappings)
+                padNames[m][a.defaultKey] = a.name;
+        }
+    }
 
     auto groups = ReadGroups(doc);
     bool changed = false;
@@ -492,6 +615,18 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
         {
             key.append_attribute("overridableUI") = mapping.attribute("name").value();
             changed = true;
+        }
+        if (auto pads = padNames.find(mapping.attribute("name").as_string()); pads != padNames.end())
+        {
+            for (auto button : mapping.children("button"))
+            {
+                auto pad = pads->second.find(button.attribute("id").as_string());
+                if (pad != pads->second.end() && !button.attribute("overridableUI"))
+                {
+                    button.append_attribute("overridableUI") = pad->second.c_str();
+                    changed = true;
+                }
+            }
         }
     }
 
@@ -576,8 +711,10 @@ std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::v
             list = options.size() - 1;
             index = 0;
         }
-        options[list]["options"].push_back(
-            {{"name", a.name}, {"display_name", LabelKey(a)}, {"order", index++}, {"is_input", true}});
+        json option = {{"name", a.name}, {"display_name", LabelKey(a)}, {"order", index++}, {"is_input", true}};
+        if (!a.labelKeys.empty())
+            option["display_name_keys"] = a.labelKeys;
+        options[list]["options"].push_back(std::move(option));
     }
 
     return data.dump(4);

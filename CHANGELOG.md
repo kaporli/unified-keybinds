@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 (2026-11-05)
+
+- Renamed to Unified Keybinds (was Native Mod Keybinds). Files and folders keep their names, so updating works as before.
+- Controller rebinding: use a controller in Key Bindings and the menu shows controller buttons, for vanilla actions and mod actions, and switches back when you use the keyboard. An action is listed when exactly one controller button triggers it.
+- Redscript Configuration Framework mods (the DigitalVixen mods) now list their gamepad keys too, kept in sync with RCF's hub.
+
 ## 1.3.0 (2026-11-05)
 
 - Lists the keys of mods that keep them in Redscript Configuration Framework (RCF), such as the DigitalVixen mods (Shattered Chrome, Chrome Plating, Injuries and others), with the mod's own names, one section per mod. A key changed in Key Bindings goes to RCF and its hub; a key changed in RCF's hub shows up in Key Bindings within 2 seconds. Keys appear from the second launch after the mod is installed. Gamepad keys are not supported yet and stay in RCF's hub.

@@ -17,6 +17,7 @@ struct Key
     std::string name;                  // overridableUI name
     std::vector<std::string> mappings; // mappings that carry it
     std::string key;                   // EInputKey name, e.g. IK_F7, or IK_LControl+IK_K
+    bool pad = false;                  // a controller entry: may set controller buttons
 };
 
 bool Attach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle);
