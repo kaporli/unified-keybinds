@@ -1,8 +1,10 @@
-[size=5][b]Every mod's keybinds in the game's own Key Bindings menu.[/b][/size]
+[size=5][b]Every mod key and controller button, rebindable in the vanilla menu.[/b][/size]
 
-Rebind any mod key, even ones the mod never made rebindable, and set key combinations, all next to the vanilla keys.
+Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, vanilla and modded, all in the game's own Key Bindings menu.
 
-Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. Native Mod Keybinds adds a section per mod to [b]Settings > Controls > Key Bindings[/b] with every keyboard action your installed mods add, so you can rebind them next to the vanilla keys. The list is built from your installed mods each time the game starts.
+Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to [b]Settings > Controls > Key Bindings[/b] with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. The list is built from your installed mods each time the game starts.
+
+[i]Formerly Native Mod Keybinds. Files and folders keep their names, so updating works as before.[/i]
 
 [size=4][b]Supported keybind sources[/b][/size]
 
@@ -32,7 +34,7 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [/tr]
 [tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
 [td]Mods that keep their keys in [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url]'s hub, like the [url=https://www.nexusmods.com/cyberpunk2077/mods/28390]DigitalVixen[/url] mods ([url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url] and others)[/td]
-[td]Appears from the second launch after you install the mod, with the mod's own names. Single keys only. Kept in sync with RCF's hub both ways. [b]Gamepad keys are not supported yet[/b]: they stay in RCF's hub for now, and I'm looking into it.[/td]
+[td]Appears from the second launch after you install the mod, with the mod's own names. Single keys and controller buttons. Kept in sync with RCF's hub both ways.[/td]
 [/tr]
 [tr][td][b]⏳ Not yet[/b][/td]
 [td]...[/td]
@@ -44,7 +46,7 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [/tr]
 [/table][size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
-[*][color=#e5be37][b]Keyboard and mouse only: controller keys are left out. RCF mods keep theirs in RCF's hub. I'm looking into supporting them.[/b][/color][/*]
+[*][color=#e5be37][b]Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.[/b][/color][/*]
 [*][color=#e5be37][b]A new key combination applies after a restart (a popup tells you). Single keys apply instantly.[/b][/color][/*]
 [*][color=#e5be37][b]Combinations are modifier + key, pressed within half a second. The game crashes with more than about 30 in total, so past that an action keeps its key.[/b][/color][/*]
 [*][color=#e5be37][b]A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.[/b][/color][/*]
@@ -60,6 +62,7 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [*]Key combinations are shown as their keys (for example [i]"F2 + 2"[/i]) and can be rebound to a single key. [b]Defaults[/b] puts the combination back from the next launch.[/*]
 [*]Record your own combination: [b]hold a modifier (Shift, Ctrl or Alt) and press a key[/b], for example [i]"Ctrl + K"[/i]. A modifier pressed on its own is bound alone.[/*]
 [*]A changed key applies right away, also for mods without a Mod Settings option.[/*]
+[*][b]Controller rebinding[/b], which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons, for vanilla actions and mod actions alike, with the game's own section names and labels. It switches back when you use the keyboard.[/*]
 [*]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.[/*]
 [*]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.[/*]
 [/list][size=4][b]Requirements[/b][/size]
@@ -91,4 +94,4 @@ For nicer names than the generated ones, ship [i]r6/config/modkeybinds/<YourMod>
 }[/code][i]_section[/i] names the section for every action in that file. Names can also be LocKey#... keys.
 
 [size=4][b]Source[/b][/size]
-[url=https://github.com/kaporli/native-mod-keybinds]github.com/kaporli/native-mod-keybinds[/url] (MIT)
+[url=https://github.com/kaporli/unified-keybinds]github.com/kaporli/unified-keybinds[/url] (MIT)
