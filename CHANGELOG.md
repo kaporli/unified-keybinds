@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 (2026-11-05)
+
+- Vanilla controller rebinding moved to an optional file, Vanilla Controller Rebinding. The main file keeps keyboard keys and the controller buttons of mod actions. Install the optional file as well to keep rebinding vanilla controller buttons.
+- Optional file: Settings > Controls > Control Scheme draws your controller bindings instead of the defaults, for Xbox and PlayStation controllers.
+- Optional file: entries follow the control scheme (Classic, Dynamic, Alternative). Crouch, Dodge and Quick Melee could be rebound before but kept their default button. After a scheme change, a popup says the entries follow it from the next launch.
+- Optional file: a button an action uses in several places (on foot, in a vehicle) gets one entry per place, and buttons used only inside menus are no longer listed. Fix: Move Backward and Crouch (Hold) only changed minigame buttons.
+- A controller entry takes only a button of its own kind: a trigger for a trigger action, a button for a button action. Mixing them made the game drop the button until a restart.
+- Fix: a saved controller button equal to the default no longer overrides a different default later, for example after a control scheme change.
+
 ## 1.4.0 (2026-11-05)
 
 - Renamed to Unified Keybinds (was Native Mod Keybinds). Files and folders keep their names, so updating works as before.

@@ -76,10 +76,15 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   }
   let notice = ModKeybindsMenu_RestartNotice(names, keys);
   if notice {
-    // The token has to be kept, or the popup closes at once.
-    this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Unified Keybinds", "New key combinations apply after you restart the game. Single keys apply right away.", GenericMessageNotificationType.OK);
-    this.m_modKeybindsPopup.RegisterListener(this, n"OnModKeybindsPopupClosed");
+    this.ModKeybindsShowPopup("New key combinations apply after you restart the game. Single keys apply right away.");
   }
+}
+
+@addMethod(SettingsMainGameController)
+private func ModKeybindsShowPopup(text: String) -> Void {
+  // The token has to be kept, or the popup closes at once.
+  this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Unified Keybinds", text, GenericMessageNotificationType.OK);
+  this.m_modKeybindsPopup.RegisterListener(this, n"OnModKeybindsPopupClosed");
 }
 
 @addMethod(SettingsMainGameController)

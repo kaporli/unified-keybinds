@@ -25,6 +25,8 @@ struct Action
     std::string group;                 // settings group, when not the section's own (vanilla controller keys)
     std::string sectionKey;            // translation key of the section header, when the game has one
     std::vector<std::string> labelKeys; // keys filled into a label like "% / %", as the game's own entries do
+    std::string labelFormat;           // such a label, when it isn't the game's (a controller entry's "% (Vehicle)")
+    bool scheme = false;               // a controller entry whose buttons come from a control scheme's copy
 };
 
 // Prefix of the controller entries this mod adds for an action that has a keyboard entry; the
@@ -34,6 +36,10 @@ inline constexpr const char* kPadPrefix = "MKPad_";
 // The key an action starts a session with: RCF's for keys it keeps (the scripts copy every
 // change to RCF), else the one saved in the menu, else the mod's.
 std::string StartKey(const Action& aAction, const std::map<std::string, std::string>& aSaved);
+
+// False for a key a controller entry can't take: a keyboard key, or a trigger for a button or the
+// reverse (the game then drops the button from the mapping until it restarts).
+bool Fits(const Action& aAction, const std::string& aKey);
 
 // The menu shows display names through the game's translation system, so options.json gets
 // keys and the scripts register the text for them with Codeware.
@@ -59,8 +65,11 @@ using LogFn = std::function<void(const std::string&)>;
 // key and no overridableUI (by mapping name). Controller entries: a mod's own controller
 // overridableUI, and for each keyboard action (mod or vanilla) whose mappings hold exactly one
 // controller button without one, an entry named kPadPrefix + the action.
-// Sorted by section; vanilla controller entries first, in the game's order.
-std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::string& aBaseOptions, const LogFn& aLog);
+// Sorted by section; vanilla controller entries first, in the game's order. aScheme is the
+// controller scheme in use (Legacy, Agile, Alternative): some mappings have a copy per scheme.
+// aVanillaPads: include the vanilla controller entries (the optional Vanilla Controller file).
+std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::string& aBaseOptions,
+                            const std::string& aScheme, bool aVanillaPads, const LogFn& aLog);
 
 // Merged mappings (aMerged) with overridableUI added to the single-key mappings in aActions,
 // so the game lets them be rebound. Empty if there is nothing to add.

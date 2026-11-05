@@ -2,7 +2,7 @@
 
 Every mod key and controller button, rebindable in the vanilla menu.
 
-Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, vanilla and modded, all in the game's own Key Bindings menu.
+Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, all in the game's own Key Bindings menu. Vanilla controller buttons need the optional file Vanilla Controller Rebinding.
 
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to Settings > Controls > Key Bindings with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
@@ -11,6 +11,7 @@ Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and fold
 ## Limitations
 
 > [!WARNING]
+> - Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding. The game gives no warning when two actions share a controller button, and one of them may stop working.
 > - Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.
 > - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
 > - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
@@ -45,9 +46,15 @@ Each mod gets its own section below the vanilla keys:
 
 ![The Enhanced Vehicle System section with the key combinations Ctrl + K and F1 + 1](screenshots/key-bindings-key-combinations.jpg)
 
-With a controller, the menu shows controller buttons. Here Quicksave is rebound from Y to the D-pad:
+With a controller, the menu shows controller buttons. Here Quicksave is rebound from Y to the D-pad (optional file):
 
 ![Key Bindings in the controller view, Quicksave rebound to the D-pad](screenshots/key-bindings-controller.jpg)
+
+With the optional file, the Control Scheme screen shows your bindings. Defaults, then Crouch and Dodge, Interact and Jump swapped:
+
+![Control Scheme screen with the default layout](screenshots/control-scheme-before.jpg)
+
+![Control Scheme screen with Crouch and Dodge, Interact and Jump swapped](screenshots/control-scheme-after.jpg)
 
 ## Features
 
@@ -57,7 +64,8 @@ With a controller, the menu shows controller buttons. Here Quicksave is rebound 
 - Key combinations are shown as their keys (for example *"F2 + 2"*) and can be rebound to a single key. Defaults puts the combination back from the next launch.
 - Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example *"Ctrl + K"*. A modifier pressed on its own is bound alone.
 - A changed key applies right away, also for mods without a Mod Settings option.
-- Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons, for vanilla actions and mod actions alike, with the game's own section names and labels. It switches back when you use the keyboard. A controller entry takes only controller buttons and a keyboard entry only keys.
+- Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard. A controller entry takes only controller buttons of its kind (trigger or button) and a keyboard entry only keys.
+- Optional file Vanilla Controller Rebinding: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The Control Scheme screen draws your bindings.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 - Also lists the keys of mods that keep them in Redscript Configuration Framework (for example DigitalVixen's Shattered Chrome, Chrome Plating or Injuries), with the mod's own names. A key changed here or in RCF's hub changes both.
@@ -83,6 +91,12 @@ Extract the archive into the Cyberpunk 2077 game folder, or install it with Mod 
 red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
 red4ext/plugins/ModKeybindsMenu/scripts/
 bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
+```
+
+The optional file Vanilla Controller Rebinding adds one file, installed the same way on top of the main file:
+
+```
+red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds
 ```
 
 ## Uninstallation
@@ -120,7 +134,7 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - The menu shows labels through the game's translation system, so `options.json` holds keys like `ModKeybindsMenu-itsHotkey` and the scripts register the label text for every language through Codeware.
 - A small CET script (`bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua`) reads the key bindings in Native Settings UI and hands them to the plugin, which lists them from the next launch (`r6/cache/modkeybinds/nativesettings.json`). A key changed in Key Bindings goes to the mod through Native Settings UI when changes are applied or the settings menu closes; a key changed in Native Settings UI, Unified Mod Settings or by the mod itself goes to Key Bindings within a second.
 - Mods that use Redscript Configuration Framework bind their actions to an empty `buttonGroup` and RCF puts the key in place. RCF stores each mod's page and values in `r6/storages/RedscriptConfigFramework` (`<mod>.cached.json`, `<mod>.json`); the plugin lists the keys from there with RCF's labels and the mod's current key, and leaves out placeholder actions RCF doesn't list. The menu entry sets the binding, so the scripts copy a change to RCF (`DVRCF.SetInt`, or RCF's settings for its hub key) and check RCF every 2 seconds, when a session starts and when the settings menu opens, to copy changes made in its hub.
-- Controller entries: the game's key binding entries take keyboard keys only. For every action (vanilla or mod) whose mappings hold exactly one controller button without `overridableUI`, the plugin adds an entry named `MKPad_<action>` and gives that button the name as `overridableUI` in the copy of the mappings the game reads. Vanilla ones go in sections named after the game's, with its labels. The scripts show controller entries while the last device used is a controller (the game's `InputSchemes.Device` blackboard) and the keyboard entries otherwise, and rebuild the list when the device changes. The ApplyOverrides hook sets controller buttons only for controller entries.
+- Controller entries: the game's key binding entries take keyboard keys only. For every action (vanilla or mod) whose mappings hold exactly one controller button without `overridableUI`, the plugin adds an entry named `MKPad_<action>` and gives that button the name as `overridableUI` in the copy of the mappings the game reads. Vanilla ones are added only while the optional `VanillaController.reds` is installed, in sections named after the game's, with its labels. Their buttons come from the mapping's copy for the control scheme in use (`<mapping>_Legacy`, `_Agile`, `_Alternative`) where the game has one, and buttons used only in menu contexts are left out. `VanillaController.reds` also moves the rows on the Control Scheme screen to the buttons they are bound to. The scripts show controller entries while the last device used is a controller (the game's `InputSchemes.Device` blackboard) and the keyboard entries otherwise, and rebuild the list when the device changes. The ApplyOverrides hook sets controller buttons only for controller entries.
 - Defaults resets an entry to the key the game knows for it, which it only knows for its own actions, so the scripts set mod entries to the mod's key.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
@@ -133,7 +147,7 @@ git clone --recursive https://github.com/kaporli/unified-keybinds
 tools\package.ps1
 ```
 
-The plugin is built to `package/` and the release zip to `dist/`.
+The plugin is built to `package/` and the release zips (main and optional file) to `dist/`.
 
 ## License
 

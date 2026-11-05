@@ -27,4 +27,11 @@ void Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle);
 // the binding loaded at startup: the game only takes combinations from its input files. Applied
 // right away once the game has applied its own bindings.
 void Set(const std::vector<Key>& aKeys);
+
+#ifdef MKM_TEST
+// Test builds: every button of a mapping as the input manager holds it now:
+// "<key>|<keyFull>|<overridableUI hash>".
+std::vector<std::string> LiveButtons(const std::string& aMapping);
+uint32_t Hash(const std::string& aName);
+#endif
 } // namespace InputOverrides

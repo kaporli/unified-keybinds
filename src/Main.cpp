@@ -34,6 +34,8 @@ fs::path g_settings;  // the game's UserSettings.json
 fs::path g_settingsRead;  // what the game reads: UserSettings.json with the mod sections
 fs::path g_settingsWrite; // what the game writes, split back into UserSettings.json and keys.json
 fs::path g_mappings;      // what the game reads: Input Loader's merged mappings, single keys made rebindable
+std::string g_scheme;     // controller scheme at startup (Legacy, Agile, Alternative)
+bool g_vanillaPads = false; // the optional Vanilla Controller file is installed
 
 std::mutex g_writeMutex;
 std::unordered_set<HANDLE> g_writeHandles;
@@ -112,7 +114,7 @@ bool Generate(const fs::path& aBase)
     bool fresh = actions.empty();
     if (fresh)
     {
-        actions = Keybinds::Collect(g_root, base, Log);
+        actions = Keybinds::Collect(g_root, base, g_scheme, g_vanillaPads, Log);
         Rcf::Apply(g_root, actions, Log);
         for (auto& a : NativeSettings::Read(g_root))
         {
@@ -147,12 +149,19 @@ bool Generate(const fs::path& aBase)
 
     if (fresh)
     {
+        UserSettings::DropUnrecordedSchemeKeys(g_store, actions, Log);
         std::lock_guard lock(g_mutex);
         g_actions = std::move(actions);
         g_collected = true;
         Log(std::to_string(g_actions.size()) + " actions");
         for (const auto& a : g_actions)
-            Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"" + (a.pad ? " (controller)" : ""));
+        {
+            std::string mappings;
+            for (const auto& m : a.mappings)
+                mappings += (mappings.empty() ? "" : ",") + m;
+            Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"" +
+                (a.pad ? " (controller: " + mappings + (a.scheme ? ", scheme" : "") + ")" : ""));
+        }
     }
     return true;
 }
@@ -222,9 +231,15 @@ bool IsUserSettingsFile(LPCWSTR aPath)
 // incomplete right after the handle closes, so this retries briefly.
 void SplitWrittenSettings()
 {
+    std::map<std::string, std::string> defaults;
+    {
+        std::lock_guard lock(g_mutex);
+        for (const auto& a : g_actions)
+            defaults[a.name] = a.defaultKey;
+    }
     for (int attempt = 0; attempt < 20; ++attempt)
     {
-        if (UserSettings::Split(g_settingsWrite, g_settings, g_store, Log))
+        if (UserSettings::Split(g_settingsWrite, g_settings, g_store, Log, defaults))
         {
             std::error_code ec;
             fs::remove(g_settingsWrite, ec);
@@ -405,6 +420,32 @@ void Native_PadNames(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ex
     }
 }
 
+// Controller scheme the controller entries were made for.
+void Native_PadScheme(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+{
+    aFrame->code++;
+    if (aOut)
+        *aOut = RED4ext::CName(g_scheme.c_str());
+}
+
+// True when aScheme differs from the controller scheme the controller entries were made for, and
+// the player wasn't told about it yet.
+void Native_SchemeNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    RED4ext::CString scheme;
+    RED4ext::GetParameter(aFrame, &scheme);
+    aFrame->code++;
+
+    static std::string announced;
+    std::string current = scheme.c_str();
+    std::lock_guard lock(g_mutex);
+    bool follows = std::any_of(g_actions.begin(), g_actions.end(), [](const auto& a) { return a.scheme; });
+    bool notice = follows && !g_scheme.empty() && !current.empty() && current != g_scheme && current != announced;
+    announced = current == g_scheme ? std::string() : current;
+    if (aOut)
+        *aOut = notice;
+}
+
 // For each action, the RCF mod that keeps its key, else empty.
 void Native_RcfMods(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
                     int64_t)
@@ -479,7 +520,7 @@ void Native_SetKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, 
         for (const auto& a : g_actions)
         {
             if (a.name == name)
-                out.push_back({name, a.mappings, keys[i].ToString(), a.pad});
+                out.push_back({name, a.mappings, Keybinds::Fits(a, keys[i].ToString()) ? keys[i].ToString() : a.defaultKey, a.pad});
         }
     }
     InputOverrides::Set(out);
@@ -686,6 +727,31 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
         *aOut = notice;
 }
 
+#ifdef MKM_TEST
+// Test builds: live buttons of a mapping, see InputOverrides::LiveButtons.
+void Native_TestMapping(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
+                        int64_t)
+{
+    RED4ext::CString name;
+    RED4ext::GetParameter(aFrame, &name);
+    aFrame->code++;
+    if (!aOut)
+        return;
+    for (const auto& s : InputOverrides::LiveButtons(name.c_str()))
+        aOut->PushBack(RED4ext::CString(s.c_str()));
+}
+
+void Native_TestHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+{
+    RED4ext::CString name;
+    RED4ext::GetParameter(aFrame, &name);
+    aFrame->code++;
+    if (aOut)
+        *aOut = static_cast<int32_t>(InputOverrides::Hash(name.c_str()));
+}
+
+#endif
+
 void RegisterTypes()
 {
 }
@@ -735,6 +801,19 @@ void PostRegisterTypes()
     padNames->SetReturnType("array:CName");
     rtti->RegisterFunction(padNames);
 
+    auto padScheme =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadScheme", "ModKeybindsMenu_PadScheme", &Native_PadScheme);
+    padScheme->flags = flags;
+    padScheme->SetReturnType("CName");
+    rtti->RegisterFunction(padScheme);
+
+    auto schemeNotice = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SchemeNotice", "ModKeybindsMenu_SchemeNotice",
+                                                         &Native_SchemeNotice);
+    schemeNotice->flags = flags;
+    schemeNotice->AddParam("String", "scheme");
+    schemeNotice->SetReturnType("Bool");
+    rtti->RegisterFunction(schemeNotice);
+
     auto rcfMods =
         RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RcfMods", "ModKeybindsMenu_RcfMods", &Native_RcfMods);
     rcfMods->flags = flags;
@@ -781,6 +860,21 @@ void PostRegisterTypes()
         nativeSettings->AddParam("array:String", param);
     rtti->RegisterFunction(nativeSettings);
 
+#ifdef MKM_TEST
+    auto testMapping = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestMapping", "ModKeybindsMenu_TestMapping",
+                                                        &Native_TestMapping);
+    testMapping->flags = flags;
+    testMapping->AddParam("String", "mapping");
+    testMapping->SetReturnType("array:String");
+    rtti->RegisterFunction(testMapping);
+    auto testHash =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestHash", "ModKeybindsMenu_TestHash", &Native_TestHash);
+    testHash->flags = flags;
+    testHash->AddParam("String", "name");
+    testHash->SetReturnType("Int32");
+    rtti->RegisterFunction(testHash);
+#endif
+
     SetStoredKeys();
 }
 } // namespace
@@ -815,12 +909,16 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
 
         // Version 1.0.0 saved the mod sections in UserSettings.json: move them out.
         UserSettings::Split(g_settings, g_settings, g_store, Log);
+        g_scheme = UserSettings::ListValue(g_settings, g_root / "r6" / "config" / "settings" / "options.json",
+                                           "/controls/controller", "InputSchemesMode");
 
         HMODULE self = nullptr;
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            reinterpret_cast<LPCWSTR>(&Main), &self);
         auto scripts = ModulePath(self).parent_path() / "scripts";
         aSdk->scripts->Add(aHandle, scripts.c_str());
+        // The optional file adds the vanilla controller entries' script (the Control Scheme diagram).
+        g_vanillaPads = fs::exists(scripts / "ModKeybindsMenu" / "VanillaController.reds", ec);
 
         auto target = GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "CreateFileW");
         auto close = GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "CloseHandle");
@@ -845,6 +943,8 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         rtti->AddRegisterCallback(RegisterTypes);
         rtti->AddPostRegisterCallback(PostRegisterTypes);
         Log("Loaded, game folder: " + g_root.string());
+        Log("Controller scheme: " + (g_scheme.empty() ? std::string("unknown") : g_scheme));
+        Log(std::string("Vanilla controller entries: ") + (g_vanillaPads ? "on" : "off"));
         break;
     }
     case RED4ext::v1::EMainReason::Unload:
@@ -867,7 +967,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 4, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 5, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

@@ -1,12 +1,27 @@
 [size=5][b]Every mod key and controller button, rebindable in the vanilla menu.[/b][/size]
 
-Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, vanilla and modded, all in the game's own Key Bindings menu.
+Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, all in the game's own Key Bindings menu. Vanilla controller buttons need the optional file [b]Vanilla Controller Rebinding[/b].
 
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to [b]Settings > Controls > Key Bindings[/b] with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. The list is built from your installed mods each time the game starts.
 
 [i]Formerly Native Mod Keybinds. Files and folders keep their names, so updating works as before.[/i]
 
-[size=4][b]Supported keybind sources[/b][/size]
+[size=4][b][color=#4caf50]Features[/color][/b][/size]
+[list]
+[*][color=#4caf50]One section per mod in [b]Settings > Controls > Key Bindings[/b], for example [i]"Mod: Let There Be Flight"[/i] or [i]"Mod: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.[/color][/*]
+[*][color=#4caf50]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].[/color][/*]
+[*][color=#4caf50]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.[/color][/*]
+[*][color=#4caf50]Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.[/color][/*]
+[*][color=#4caf50]Also lists the keys of mods that keep them in Redscript Configuration Framework, like DigitalVixen's [url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url] or [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url], with the mod's own names. A key changed here or in RCF's hub changes both.[/color][/*]
+[*][color=#4caf50]Also lists keys the mod didn't mark as rebindable (for example Enhanced Vehicle System's F1 to F4 and T).[/color][/*]
+[*][color=#4caf50]Key combinations are shown as their keys (for example [i]"F2 + 2"[/i]) and can be rebound to a single key. [b]Defaults[/b] puts the combination back from the next launch.[/color][/*]
+[*][color=#4caf50]Record your own combination: [b]hold a modifier (Shift, Ctrl or Alt) and press a key[/b], for example [i]"Ctrl + K"[/i]. A modifier pressed on its own is bound alone.[/color][/*]
+[*][color=#4caf50]A changed key applies right away, also for mods without a Mod Settings option.[/color][/*]
+[*][color=#4caf50][b]Controller rebinding[/b], which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard.[/color][/*]
+[*][color=#4caf50]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The [b]Control Scheme[/b] screen draws your bindings.[/color][/*]
+[*][color=#4caf50]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.[/color][/*]
+[*][color=#4caf50]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.[/color][/*]
+[/list][size=4][b]Supported keybind sources[/b][/size]
 
 [table][tr][th]Status[/th]
 [th]Keybind source[/th]
@@ -46,25 +61,12 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 [/tr]
 [/table][size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
+[*][color=#e5be37][b]Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding. The game gives no warning when two actions share a controller button, and one of them may stop working.[/b][/color][/*]
 [*][color=#e5be37][b]Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.[/b][/color][/*]
 [*][color=#e5be37][b]A new key combination applies after a restart (a popup tells you). Single keys apply instantly.[/b][/color][/*]
 [*][color=#e5be37][b]Combinations are modifier + key, pressed within half a second. The game crashes with more than about 30 in total, so past that an action keeps its key.[/b][/color][/*]
 [*][color=#e5be37][b]A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.[/b][/color][/*]
 [*][color=#e5be37][b]Unbinding a key without a Mod Settings option resets it to the mod's default when a save loads.[/b][/color][/*]
-[/list][size=4][b]Features[/b][/size]
-[list]
-[*]One section per mod in [b]Settings > Controls > Key Bindings[/b], for example [i]"Mod: Let There Be Flight"[/i] or [i]"Mod: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.[/*]
-[*]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].[/*]
-[*]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.[/*]
-[*]Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.[/*]
-[*]Also lists the keys of mods that keep them in Redscript Configuration Framework, like DigitalVixen's [url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url] or [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url], with the mod's own names. A key changed here or in RCF's hub changes both.[/*]
-[*]Also lists keys the mod didn't mark as rebindable (for example Enhanced Vehicle System's F1 to F4 and T).[/*]
-[*]Key combinations are shown as their keys (for example [i]"F2 + 2"[/i]) and can be rebound to a single key. [b]Defaults[/b] puts the combination back from the next launch.[/*]
-[*]Record your own combination: [b]hold a modifier (Shift, Ctrl or Alt) and press a key[/b], for example [i]"Ctrl + K"[/i]. A modifier pressed on its own is bound alone.[/*]
-[*]A changed key applies right away, also for mods without a Mod Settings option.[/*]
-[*][b]Controller rebinding[/b], which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons, for vanilla actions and mod actions alike, with the game's own section names and labels. It switches back when you use the keyboard.[/*]
-[*]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.[/*]
-[*]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.[/*]
 [/list][size=4][b]Requirements[/b][/size]
 [list]
 [*]Cyberpunk 2077 [b]2.5[/b][/*]
@@ -79,7 +81,8 @@ Mods that add keys usually leave them in an input file, in Mod Settings, or both
 Install with Mod Organizer 2 or Vortex, or extract the archive into the Cyberpunk 2077 game folder. The files go to:
 [code]red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
 red4ext/plugins/ModKeybindsMenu/scripts/
-bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua[/code][size=4][b]Uninstallation[/b][/size]
+bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua[/code]The optional file Vanilla Controller Rebinding adds one file, installed the same way on top of the main file:
+[code]red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds[/code][size=4][b]Uninstallation[/b][/size]
 Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] and [i]bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu[/i] folders. Optionally delete [i]r6/cache/modkeybinds/[/i], where the mod keys are kept. Nothing is written to your save.
 
 Updating from 1.0.0: [b]start the game once with 1.0.1 before uninstalling[/b], so your settings file gets cleaned up.

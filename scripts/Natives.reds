@@ -33,6 +33,12 @@ public static native func ModKeybindsMenu_ComboKeys(value: CName) -> array<CName
 // True when these keys change a key combination compared to startup (applies after a restart) and the player wasn't told yet
 public static native func ModKeybindsMenu_RestartNotice(names: array<CName>, keys: array<CName>) -> Bool
 
+// Controller scheme the controller entries were made for: Legacy, Agile or Alternative
+public static native func ModKeybindsMenu_PadScheme() -> CName
+
+// True when this controller scheme differs from the one the controller entries were made for (they follow after a restart) and the player wasn't told yet
+public static native func ModKeybindsMenu_SchemeNotice(scheme: String) -> Bool
+
 // Starts watching the keyboard while an entry waits for a key
 public static native func ModKeybindsMenu_WatchModifier() -> Void
 

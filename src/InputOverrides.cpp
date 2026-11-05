@@ -175,6 +175,29 @@ void InputOverrides::Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHan
         aSdk->hooking->Detach(aHandle, g_target);
 }
 
+#ifdef MKM_TEST
+std::vector<std::string> InputOverrides::LiveButtons(const std::string& aMapping)
+{
+    static RED4ext::UniversalRelocFunc<GetMappingCollection_t> getMappingCollection(kGetMappingCollection);
+    std::vector<std::string> out;
+    std::lock_guard lock(g_mutex);
+    if (!g_manager || !g_manager->contextManager || !g_manager->contextManager->userMapping)
+        return out;
+    auto collection = getMappingCollection(g_manager->contextManager->userMapping, RED4ext::CName(aMapping.c_str()));
+    if (!collection)
+        return out;
+    for (const auto& m : collection->mappings)
+        out.push_back(std::to_string(m.key) + "|" + std::to_string(m.keyFull) + "|" + std::to_string(m.overridable));
+    return out;
+}
+
+uint32_t InputOverrides::Hash(const std::string& aName)
+{
+    static RED4ext::UniversalRelocFunc<CalcHash_t> calcHash(kCalcHash);
+    return calcHash(RED4ext::CString(aName.c_str()));
+}
+#endif
+
 void InputOverrides::Set(const std::vector<Key>& aKeys)
 {
     static RED4ext::UniversalRelocFunc<CalcHash_t> calcHash(kCalcHash);

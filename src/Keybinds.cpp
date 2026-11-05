@@ -88,14 +88,45 @@ Groups ReadGroups(const pugi::xml_document& aDoc)
     return out;
 }
 
+// Controller schemes (Settings > Controls > Control Scheme). A mapping with a copy for every scheme
+// (Name_Legacy, Name_Agile, Name_Alternative) gets its controller buttons from the copy of the scheme
+// in use; its own are ignored. Its keyboard keys stay. Mapping -> copy for aScheme.
+using Copies = std::map<std::string, std::string>;
+
+Copies SchemeCopies(const pugi::xml_document& aDoc, const std::string& aScheme)
+{
+    std::set<std::string> names;
+    for (auto mapping : aDoc.child("bindings").children("mapping"))
+        names.insert(mapping.attribute("name").as_string());
+    Copies out;
+    if (aScheme.empty())
+        return out;
+    for (const auto& n : names)
+    {
+        if (names.contains(n + "_Legacy") && names.contains(n + "_Agile") && names.contains(n + "_Alternative") &&
+            names.contains(n + "_" + aScheme))
+            out[n] = n + "_" + aScheme;
+    }
+    return out;
+}
+
 // overridableUI -> first keyboard button id, in document order. A mapping with a single key
 // and no overridableUI is listed by its own name, it gets one in the copy the game reads.
-std::map<std::string, Button> ReadMappings(const fs::path& aFile)
+// aCopies receives the mappings whose controller buttons come from a scheme's copy.
+std::map<std::string, Button> ReadMappings(const fs::path& aFile, const std::string& aScheme = {},
+                                           Copies* aCopies = nullptr)
 {
     std::map<std::string, Button> out;
     pugi::xml_document doc;
     if (!doc.load_file(aFile.c_str()))
         return out;
+
+    auto copies = SchemeCopies(doc, aScheme);
+    std::map<std::string, pugi::xml_node> byName;
+    for (auto mapping : doc.child("bindings").children("mapping"))
+        byName.emplace(mapping.attribute("name").as_string(), mapping);
+    if (aCopies)
+        *aCopies = copies;
 
     auto groups = ReadGroups(doc);
     // buttonGroups without buttons: a placeholder for a key another mod puts in place.
@@ -139,7 +170,13 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile)
                 it->second.mappings.push_back(mapName);
             if (std::string(mapping.attribute("type").as_string("Button")) != "Button")
                 continue;
-            for (auto other : mapping.children("button"))
+            auto padSource = mapping;
+            if (auto copy = copies.find(mapName); copy != copies.end())
+            {
+                padSource = byName[copy->second];
+                mapName = copy->second;
+            }
+            for (auto other : padSource.children("button"))
             {
                 std::string padId = other.attribute("id").as_string();
                 if (other.attribute("overridableUI") || !IsPadButton(padId, groups))
@@ -382,6 +419,229 @@ std::string Slug(const std::string& aText)
     }
     return out.empty() ? "Other" : out;
 }
+// Where a mapping is in use: its actions and contexts. Contexts that never run during play are left
+// out: the Key Bindings menu's conflict checks (Settings*), arcade minigames and tutorials.
+struct Use
+{
+    std::set<std::string> actions;
+    std::set<std::string> contexts;
+};
+using Uses = std::map<std::string, Use>; // by mapping name
+
+bool IsLiveContext(const std::string& aContext)
+{
+    static const std::set<std::string> skipped = {"UIShooterMinigame", "UIRoachRaceMinigame", "UITankMinigame",
+                                                  "UIArcadeMinigames", "MotionPatternTutorial"};
+    return aContext.rfind("Settings", 0) != 0 && !skipped.contains(aContext);
+}
+
+Uses ReadUses(const fs::path& aContexts)
+{
+    Uses out;
+    pugi::xml_document doc;
+    if (!doc.load_file(aContexts.c_str()))
+        return out;
+    for (auto context : doc.child("bindings").children("context"))
+    {
+        std::string name = context.attribute("name").as_string();
+        if (!IsLiveContext(name))
+            continue;
+        for (auto action : context.children("action"))
+        {
+            std::string a = action.attribute("name").as_string();
+            const std::string tutorial = "_Tutorial";
+            if (a.size() > tutorial.size() && a.compare(a.size() - tutorial.size(), tutorial.size(), tutorial) == 0)
+                continue;
+            auto& use = out[action.attribute("map").as_string()];
+            use.actions.insert(a);
+            use.contexts.insert(name);
+        }
+    }
+    return out;
+}
+
+// Menu navigation: moving between items, confirming, going back, switching tabs or options. Rebinding
+// these on a controller changes how every menu is used, so they get no controller entry.
+bool IsNavigation(const Use& aUse)
+{
+    static const std::set<std::string> navigation = {
+        "UI_MoveUp", "UI_MoveDown", "UI_MoveLeft", "UI_MoveRight", "popup_moveUp", "popup_moveDown",
+        "popup_moveLeft", "popup_moveRight", "up_button", "down_button", "left_button", "right_button",
+        "navigate_up", "navigate_down", "navigate_left", "navigate_right", "popup_navigate_up",
+        "popup_navigate_down", "popup_navigate_left", "popup_navigate_right", "UI_DialogFocus", "click",
+        "proceed", "UI_Apply", "UI_Cancel", "back", "cancel", "prior_menu", "next_menu", "popup_prior",
+        "popup_next", "option_switch_prev", "option_switch_next", "option_switch_prev_settings",
+        "option_switch_next_settings", "sub_option_switch_prev", "sub_option_switch_next", "mod_prior_menu",
+        "mod_next_menu", "mod_prior_page", "mod_next_page", "ChoiceScrollUp", "ChoiceScrollDown",
+        "PhotoMode_Left_Button", "PhotoMode_Right_Button", "PhotoMode_Prior_Menu", "PhotoMode_Next_Menu"};
+    for (const auto& a : aUse.actions)
+    {
+        if (navigation.contains(a))
+            return true;
+    }
+    return false;
+}
+
+// Contexts of full-screen menus and popups. A mapping used only there gets no controller entry:
+// one keyboard key covers unrelated buttons there (Unequip Item: R3 zooms the map, Y sells a perk).
+bool IsMenuOnly(const Use& aUse)
+{
+    static const std::set<std::string> menus = {
+        "UI", "UIBase", "UIMenu", "UIMenuShared", "UIShared", "UINotifications", "UIFrameSwitcher",
+        "UIVehicleVisualCustomization", "UIVehicleVisualCustomizationOverride", "UIZoomDevice", "UI_DPad_Wheel",
+        "UI_Phone", "ModBrowserUI"};
+    return std::all_of(aUse.contexts.begin(), aUse.contexts.end(), [](const auto& c) { return menus.contains(c); });
+}
+
+// Where a group of mappings applies, as a label suffix. Empty when it applies on foot.
+std::string Category(const std::set<std::string>& aContexts)
+{
+    std::map<std::string, int> count;
+    for (const auto& c : aContexts)
+    {
+        std::string cat;
+        if (c.rfind("UI_QuickHackPanel", 0) == 0)
+            cat = "Scanner";
+        else if (c == "UIToggles" || c == "UIExploration" || c == "UI_DPad")
+            cat = "";
+        else if (c.find("Braindance") != std::string::npos)
+            cat = "Braindance";
+        else if (c.find("PhotoMode") != std::string::npos)
+            cat = "Photo Mode";
+        else if (c.find("Vehicle") != std::string::npos || c == "DelamainTaxi")
+            cat = c.find("Combat") != std::string::npos ? "Vehicle Combat" : "Vehicle";
+        else if (c.rfind("UI", 0) == 0 || c == "ModBrowserUI" || c == "InputBlocked")
+            cat = "Menus";
+        else if (c == "DeviceControl")
+            cat = "Devices";
+        else if (c.rfind("Vision", 0) == 0)
+            cat = "Scanner";
+        ++count[cat];
+    }
+    if (count[""] > 0)
+        return "";
+    std::string best;
+    int most = -1;
+    for (const char* cat : {"", "Vehicle", "Vehicle Combat", "Scanner", "Devices", "Menus", "Photo Mode", "Braindance"})
+    {
+        if (count[cat] > most)
+        {
+            most = count[cat];
+            best = cat;
+        }
+    }
+    return best;
+}
+
+// A controller button of an action and the mappings it sits in.
+struct PadGroup
+{
+    std::string button;
+    std::vector<std::string> mappings;
+    std::set<std::string> contexts;
+    bool navigation = false;
+};
+
+// The controller buttons of an action that are in use during play, one group per button. A mapping's
+// button that an earlier action took (aClaimed) is left to that action.
+std::vector<PadGroup> PadGroups(const Button& aButton, const Uses& aUses,
+                                std::set<std::pair<std::string, std::string>>& aClaimed, bool aShowNavigation)
+{
+    std::vector<PadGroup> out;
+    for (const auto& [padId, mappings] : aButton.pads)
+    {
+        PadGroup group{padId};
+        for (const auto& m : mappings)
+        {
+            auto use = aUses.find(m);
+            if (use == aUses.end() || aClaimed.contains({m, padId}))
+                continue;
+            bool navigation = IsNavigation(use->second) || IsMenuOnly(use->second);
+            if (navigation && !aShowNavigation)
+                continue;
+            group.navigation = group.navigation || navigation;
+            group.mappings.push_back(m);
+            group.contexts.insert(use->second.contexts.begin(), use->second.contexts.end());
+        }
+        if (group.mappings.empty())
+            continue;
+        for (const auto& m : group.mappings)
+            aClaimed.insert({m, padId});
+        out.push_back(std::move(group));
+    }
+    // The on-foot group first, it keeps the plain label.
+    std::stable_sort(out.begin(), out.end(), [](const PadGroup& a, const PadGroup& b) {
+        return Category(a.contexts).empty() && !Category(b.contexts).empty();
+    });
+    return out;
+}
+
+// "IK_Pad_DigitDown" -> "D-Pad Down", Xbox names as in the game's own controller labels.
+std::string ButtonName(const std::string& aButton)
+{
+    static const std::map<std::string, std::string> names = {
+        {"IK_Pad_A_CROSS", "A"}, {"IK_Pad_B_CIRCLE", "B"}, {"IK_Pad_X_SQUARE", "X"}, {"IK_Pad_Y_TRIANGLE", "Y"},
+        {"IK_Pad_DigitUp", "D-Pad Up"}, {"IK_Pad_DigitDown", "D-Pad Down"}, {"IK_Pad_DigitLeft", "D-Pad Left"},
+        {"IK_Pad_DigitRight", "D-Pad Right"}, {"IK_Pad_LeftShoulder", "LB"}, {"IK_Pad_RightShoulder", "RB"},
+        {"IK_Pad_LeftTrigger", "LT"}, {"IK_Pad_RightTrigger", "RT"}, {"IK_Pad_LeftThumb", "LS"},
+        {"IK_Pad_RightThumb", "RS"}, {"IK_Pad_Start", "Menu"}, {"IK_Pad_Back_Select", "View"}};
+    auto it = names.find(aButton);
+    return it != names.end() ? it->second : Keybinds::Humanize(aButton.substr(7));
+}
+
+// Label suffix for each group: none for a single group or the first on-foot one, else where it applies,
+// or the button too when two groups apply in the same place.
+std::vector<std::string> Suffixes(const std::vector<PadGroup>& aGroups)
+{
+    std::vector<std::string> out;
+    std::map<std::string, int> seen;
+    for (const auto& g : aGroups)
+        ++seen[Category(g.contexts)];
+    for (std::size_t i = 0; i < aGroups.size(); ++i)
+    {
+        auto cat = Category(aGroups[i].contexts);
+        if (aGroups.size() == 1 || (i == 0 && cat.empty() && seen[cat] == 1))
+            out.push_back("");
+        else if (seen[cat] == 1)
+            out.push_back(cat);
+        else
+            out.push_back((cat.empty() ? "" : cat + ", ") + ButtonName(aGroups[i].button));
+    }
+    return out;
+}
+
+// Vanilla controller buttons that do something else than their keyboard entry's label says, by
+// the mapping they are in.
+std::string OwnLabel(const PadGroup& aGroup)
+{
+    static const std::map<std::string, std::string> labels = {
+        {"CancelCharging_Button", "Cancel Gadget Throw"},
+        {"PickUpBodyFromTakedown_Button", "Pick Up Body (After Takedown)"},
+        {"NotificationLvlup_Button", "Open Level-Up Notification"},
+        {"ExitPhotoModeButton", "Exit Photo Mode"},
+        {"ResetCurrentLightButton", "Reset Light (Photo Mode)"},
+        {"LockCameraButton", "Lock Camera (Photo Mode)"},
+        {"OpenQuickHackPanel_Button", "Open Quickhacks (Scanner)"}};
+    for (const auto& m : aGroup.mappings)
+    {
+        if (auto it = labels.find(m); it != labels.end())
+            return it->second;
+    }
+    return {};
+}
+
+bool ShowNavigation()
+{
+#ifdef MKM_TEST
+    char* value = nullptr;
+    std::size_t length = 0;
+    bool on = _dupenv_s(&value, &length, "MKM_SHOW_NAV") == 0 && value && value[0] == '1';
+    free(value);
+    return on;
+#else
+    return false;
+#endif
+}
 } // namespace
 
 bool Keybinds::IsModGroup(const std::string& aGroup)
@@ -403,9 +663,17 @@ std::string Keybinds::StartKey(const Action& aAction, const std::map<std::string
 {
     if (!aAction.modId.empty() && !aAction.current.empty())
         return aAction.current;
-    if (auto it = aSaved.find(aAction.name); it != aSaved.end())
+    if (auto it = aSaved.find(aAction.name); it != aSaved.end() && Fits(aAction, it->second))
         return it->second;
     return !aAction.current.empty() ? aAction.current : aAction.defaultKey;
+}
+
+bool Keybinds::Fits(const Action& aAction, const std::string& aKey)
+{
+    if (!aAction.pad)
+        return true;
+    auto trigger = [](const std::string& k) { return k == "IK_Pad_LeftTrigger" || k == "IK_Pad_RightTrigger"; };
+    return aKey.rfind("IK_Pad", 0) == 0 && trigger(aKey) == trigger(aAction.defaultKey);
 }
 
 std::string Keybinds::GroupPath(const Action& aAction)
@@ -438,21 +706,145 @@ std::string Keybinds::Humanize(const std::string& aText)
 }
 
 std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std::string& aBaseOptions,
-                                                const LogFn& aLog)
+                                                const std::string& aScheme, bool aVanillaPads, const LogFn& aLog)
 {
-    auto merged = ReadMappings(aRoot / "r6" / "cache" / "inputUserMappings.xml");
+    Copies copies;
+    auto merged = ReadMappings(aRoot / "r6" / "cache" / "inputUserMappings.xml", aScheme, &copies);
     if (merged.empty())
     {
         aLog("No merged input mappings in r6/cache. Is Input Loader installed?");
         return {};
     }
 
-    auto base = ReadMappings(aRoot / "r6" / "config" / "inputUserMappings.xml");
+    auto base = ReadMappings(aRoot / "r6" / "config" / "inputUserMappings.xml", aScheme);
     auto baseOptions = json::parse(aBaseOptions, nullptr, false);
     auto listed = baseOptions.is_discarded() ? std::set<std::string>{} : OptionNames(baseOptions);
 
     auto sources = ReadSources(aRoot);
     auto files = ReadLabelFiles(aRoot, aLog);
+    auto uses = ReadUses(aRoot / "r6" / "cache" / "inputContexts.xml");
+    // A scheme's copy takes the place of its mapping wherever that is used.
+    for (const auto& [mapping, copy] : copies)
+    {
+        if (auto use = uses.find(mapping); use != uses.end())
+        {
+            auto from = use->second;
+            uses[copy].actions.insert(from.actions.begin(), from.actions.end());
+            uses[copy].contexts.insert(from.contexts.begin(), from.contexts.end());
+        }
+    }
+    bool showNavigation = ShowNavigation();
+    // A mapping's controller button belongs to one entry: vanilla ones first, then mods.
+    std::set<std::pair<std::string, std::string>> claimed;
+    auto padEntries = [&](const Button& aButton, const std::string& aName, const Action& aBase) {
+        std::vector<Action> out;
+        auto groups = PadGroups(aButton, uses, claimed, showNavigation);
+        // Groups with a label of their own; the others are told apart by where they apply.
+        std::vector<std::string> own;
+        std::vector<PadGroup> rest;
+        for (const auto& g : groups)
+        {
+            own.push_back(groups.size() > 1 ? OwnLabel(g) : std::string());
+            if (own.back().empty())
+                rest.push_back(g);
+        }
+        auto restSuffixes = Suffixes(rest);
+        std::vector<std::string> suffixes;
+        for (std::size_t i = 0, r = 0; i < groups.size(); ++i)
+            suffixes.push_back(own[i].empty() ? restSuffixes[r++] : std::string());
+        for (std::size_t i = 0; i < groups.size(); ++i)
+        {
+            Action p = aBase;
+            p.name = kPadPrefix + aName + (groups.size() > 1 ? "_" + groups[i].button.substr(7) : "");
+            p.defaultKey = groups[i].button;
+            p.mappings = groups[i].mappings;
+            p.pad = true;
+            for (const auto& [mapping, copy] : copies)
+                p.scheme = p.scheme || std::find(p.mappings.begin(), p.mappings.end(), copy) != p.mappings.end();
+            if (!own[i].empty())
+            {
+                p.label = own[i];
+                p.labelKey.clear();
+                p.labelKeys.clear();
+            }
+            std::string suffix = suffixes[i];
+            if (groups[i].navigation)
+                suffix += std::string(suffix.empty() ? "" : ", ") + "NAV";
+            if (!suffix.empty())
+            {
+                if (!p.labelKeys.empty() || p.labelKey.rfind("LocKey#", 0) == 0)
+                {
+                    // The game fills translated parts into a format like "% / %".
+                    p.labelFormat = (p.labelKeys.empty() ? std::string("%") : p.labelKey) + " (" + suffix + ")";
+                    if (p.labelKeys.empty())
+                        p.labelKeys.push_back(p.labelKey);
+                }
+                else
+                {
+                    p.label += " (" + suffix + ")";
+                    p.labelKey.clear();
+                }
+            }
+            out.push_back(std::move(p));
+        }
+        return out;
+    };
+
+    std::vector<Action> vanillaPads;
+    // Vanilla controller buttons: the game's key binding entries take keyboard keys only, so each
+    // gets a controller entry in a section of ours named like the game's.
+    if (!baseOptions.is_discarded() && baseOptions.contains("groups") && baseOptions.contains("options"))
+    {
+        std::vector<std::pair<int, json>> groups;
+        for (const auto& g : baseOptions["groups"])
+        {
+            std::string path = g.value("group_name", "");
+            if (path.rfind("/key_bindings/", 0) == 0 && !IsModGroup(path))
+                groups.push_back({g.value("order", 0), g});
+        }
+        std::stable_sort(groups.begin(), groups.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [groupOrder, g] : groups)
+        {
+            std::string path = g.value("group_name", "");
+            for (const auto& list : baseOptions["options"])
+            {
+                if (list.value("group_name", "") != path || !list.contains("options"))
+                    continue;
+                std::vector<json> options(list["options"].begin(), list["options"].end());
+                std::stable_sort(options.begin(), options.end(),
+                                 [](const json& a, const json& b) { return a.value("order", 0) < b.value("order", 0); });
+                for (const auto& opt : options)
+                {
+                    std::string name = opt.value("name", "");
+                    auto it = merged.find(name);
+                    if (!opt.value("is_input", false) || !opt.value("is_visible", true) || it == merged.end())
+                        continue;
+                    Action a;
+                    a.section = path.substr(path.rfind('/') + 1);
+                    a.label = name;
+                    a.labelKey = opt.value("display_name", name);
+                    // Some input mods give plain text rather than a translation key.
+                    if (a.labelKey.rfind("LocKey#", 0) != 0 && a.labelKey.find('%') == std::string::npos)
+                    {
+                        a.label = a.labelKey;
+                        a.labelKey.clear();
+                    }
+                    if (opt.contains("display_name_keys") && opt["display_name_keys"].is_array())
+                    {
+                        for (const auto& k : opt["display_name_keys"])
+                        {
+                            if (k.is_string())
+                                a.labelKeys.push_back(k.get<std::string>());
+                        }
+                    }
+                    a.group = std::string(kGroupPrefix) + "Pad" + Slug(a.section);
+                    a.sectionKey = g.value("display_name", a.section);
+                    for (auto& p : padEntries(it->second, name, a))
+                        vanillaPads.push_back(std::move(p));
+                }
+            }
+        }
+    }
 
     std::vector<std::pair<Button, Action>> found;
     for (const auto& [name, button] : merged)
@@ -494,23 +886,19 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
             }
         }
 
-        // The controller button next to the key, when it is the only one.
-        Action padAction;
-        bool addPad = !pad && !action.placeholder && button.pads.size() == 1;
-        if (addPad)
+        // Controller buttons next to the key.
+        std::vector<Action> pads;
+        if (!pad && !action.placeholder)
         {
-            const auto& [padId, padMaps] = *button.pads.begin();
-            padAction.name = kPadPrefix + name;
-            padAction.defaultKey = padId;
-            padAction.mappings = padMaps;
-            padAction.section = action.section;
-            padAction.label = action.label;
-            padAction.labelKey = LabelKey(action);
-            padAction.pad = true;
+            Action base;
+            base.section = action.section;
+            base.label = action.label;
+            base.labelKey = LabelKey(action);
+            pads = padEntries(button, name, base);
         }
         found.push_back({button, std::move(action)});
-        if (addPad)
-            found.push_back({button, std::move(padAction)});
+        for (auto& p : pads)
+            found.push_back({button, std::move(p)});
     }
 
     // One section per mod, sorted by name; actions keep their mod's own order.
@@ -520,61 +908,10 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         return a.first.order < b.first.order;
     });
 
-    // Vanilla controller buttons: the game's key binding entries take keyboard keys only, so each
-    // gets a controller entry in a section of ours named like the game's.
+    // Without them, they still claim their buttons first, so the mod entries are the same either way.
     std::vector<Action> out;
-    if (!baseOptions.is_discarded() && baseOptions.contains("groups") && baseOptions.contains("options"))
-    {
-        std::vector<std::pair<int, json>> groups;
-        for (const auto& g : baseOptions["groups"])
-        {
-            std::string path = g.value("group_name", "");
-            if (path.rfind("/key_bindings/", 0) == 0 && !IsModGroup(path))
-                groups.push_back({g.value("order", 0), g});
-        }
-        std::stable_sort(groups.begin(), groups.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (const auto& [groupOrder, g] : groups)
-        {
-            std::string path = g.value("group_name", "");
-            for (const auto& list : baseOptions["options"])
-            {
-                if (list.value("group_name", "") != path || !list.contains("options"))
-                    continue;
-                std::vector<json> options(list["options"].begin(), list["options"].end());
-                std::stable_sort(options.begin(), options.end(),
-                                 [](const json& a, const json& b) { return a.value("order", 0) < b.value("order", 0); });
-                for (const auto& opt : options)
-                {
-                    std::string name = opt.value("name", "");
-                    auto it = merged.find(name);
-                    if (!opt.value("is_input", false) || !opt.value("is_visible", true) || it == merged.end() ||
-                        it->second.pads.size() != 1)
-                        continue;
-                    const auto& [padId, padMaps] = *it->second.pads.begin();
-                    Action a;
-                    a.name = kPadPrefix + name;
-                    a.defaultKey = padId;
-                    a.mappings = padMaps;
-                    a.section = path.substr(path.rfind('/') + 1);
-                    a.label = name;
-                    a.labelKey = opt.value("display_name", name);
-                    if (opt.contains("display_name_keys") && opt["display_name_keys"].is_array())
-                    {
-                        for (const auto& k : opt["display_name_keys"])
-                        {
-                            if (k.is_string())
-                                a.labelKeys.push_back(k.get<std::string>());
-                        }
-                    }
-                    a.group = std::string(kGroupPrefix) + "Pad" + Slug(a.section);
-                    a.sectionKey = g.value("display_name", a.section);
-                    a.pad = true;
-                    out.push_back(std::move(a));
-                }
-            }
-        }
-    }
-
+    if (aVanillaPads)
+        out = std::move(vanillaPads);
     for (auto& [button, action] : found)
         out.push_back(std::move(action));
     return out;
@@ -711,7 +1048,8 @@ std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::v
             list = options.size() - 1;
             index = 0;
         }
-        json option = {{"name", a.name}, {"display_name", LabelKey(a)}, {"order", index++}, {"is_input", true}};
+        json option = {{"name", a.name}, {"display_name", a.labelFormat.empty() ? LabelKey(a) : a.labelFormat},
+                       {"order", index++}, {"is_input", true}};
         if (!a.labelKeys.empty())
             option["display_name_keys"] = a.labelKeys;
         options[list]["options"].push_back(std::move(option));

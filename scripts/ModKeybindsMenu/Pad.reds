@@ -10,6 +10,24 @@ public abstract class ModKeybindsPad {
     return StrBeginsWith(NameToString(key), "IK_Pad");
   }
 
+  public static func IsTrigger(key: CName) -> Bool {
+    return Equals(key, n"IK_Pad_LeftTrigger") || Equals(key, n"IK_Pad_RightTrigger");
+  }
+
+  // Default key of an entry, or None.
+  public static func Default(name: CName) -> CName {
+    let names = ModKeybindsMenu_Names();
+    let defaults = ModKeybindsMenu_Defaults();
+    let i = 0;
+    while i < ArraySize(names) {
+      if Equals(names[i], name) {
+        return defaults[i];
+      }
+      i += 1;
+    }
+    return n"None";
+  }
+
   public static func IsPadDevice(value: Uint32) -> Bool {
     return Cast<Int32>(value) % 256 == EnumInt(InputDevice.PAD);
   }
@@ -34,6 +52,8 @@ public abstract class ModKeybindsPad {
   }
 }
 
+public class ModKeybindsSchemeEvent extends Event {}
+
 @addField(SettingsMainGameController)
 private let m_modKeybindsPadMode: Bool;
 
@@ -46,7 +66,25 @@ protected cb func OnInitialize() -> Bool {
   let bb = this.GetBlackboardSystem().Get(defs);
   this.m_modKeybindsPadMode = ModKeybindsPad.IsPadDevice(bb.GetUint(defs.Device));
   this.m_modKeybindsDeviceCallback = bb.RegisterListenerUint(defs.Device, this, n"OnModKeybindsDevice");
-  return wrappedMethod();
+  let result = wrappedMethod();
+  // The menu is built again when the Control Scheme screen closes; checked once it is up.
+  this.QueueEvent(new ModKeybindsSchemeEvent());
+  return result;
+}
+
+// Crouch, dodge and quick melee take their controller buttons from the control scheme. The
+// controller entries are made at startup, for the scheme in use then.
+@addMethod(SettingsMainGameController)
+protected cb func OnModKeybindsScheme(e: ref<ModKeybindsSchemeEvent>) -> Bool {
+  let scheme = this.m_settings.GetVar(n"/controls/controller", n"InputSchemesMode") as ConfigVarListString;
+  if IsDefined(scheme) {
+    let value = scheme.GetValue();
+    let changed = ModKeybindsMenu_SchemeNotice(value);
+    if changed {
+      this.ModKeybindsShowPopup("The controller bindings in Key Bindings follow the new control scheme after you restart the game.");
+    }
+  }
+  return true;
 }
 
 @wrapMethod(SettingsMainGameController)
@@ -104,7 +142,9 @@ private func PopulateCategorySettingsOptions(idx: Int32) -> Void {
   this.m_data[i] = all;
 }
 
-// The game's entries end their wait on any key; an entry of the other kind keeps waiting.
+// The game's entries end their wait on any key; an entry of the other kind keeps waiting. A
+// controller entry also keeps waiting for a trigger when it has a button, and the reverse: the game
+// drops a button moved between the two.
 @wrapMethod(SettingsSelectorControllerKeyBinding)
 protected cb func OnKeyBindingEvent(e: ref<KeyBindingEvent>) -> Bool {
   if this.IsListeningForInput() && NotEquals(e.keyName, n"IK_Escape") {
@@ -112,8 +152,12 @@ protected cb func OnKeyBindingEvent(e: ref<KeyBindingEvent>) -> Bool {
     // Native results go into a variable first: used inline as an argument the call doesn't run.
     let padNames = ModKeybindsMenu_PadNames();
     let padEntry = IsDefined(v) && ArrayContains(padNames, v.GetName());
+    let wrongKind = NotEquals(ModKeybindsPad.IsPadKey(e.keyName), padEntry);
+    if padEntry && !wrongKind {
+      wrongKind = NotEquals(ModKeybindsPad.IsTrigger(e.keyName), ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName())));
+    }
     // The game stops listening once it hands out a key: start again for the next one.
-    if NotEquals(ModKeybindsPad.IsPadKey(e.keyName), padEntry) {
+    if wrongKind {
       this.StopListeningForInput();
       this.ListenForInput();
       return false;
