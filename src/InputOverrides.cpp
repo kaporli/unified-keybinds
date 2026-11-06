@@ -146,6 +146,11 @@ bool Apply(Manager* aManager)
 
 void ApplyOverrides_Hook(Manager* aManager)
 {
+    // Starting a new game clears the bindings for a moment, and plugins that apply their keys when a
+    // session starts (this one, Mod Settings, RCF) can call in then. The game's function reads the
+    // missing bindings and crashes; there is nothing to apply until they are loaded again.
+    if (!aManager || !aManager->contextManager || !aManager->contextManager->userMapping)
+        return;
     {
         std::lock_guard lock(g_mutex);
         g_manager = aManager;
@@ -218,7 +223,9 @@ void InputOverrides::Set(const std::vector<Key>& aKeys)
                 entry.mappings.emplace_back(m.c_str());
             g_entries[k.name] = std::move(entry);
         }
-        if (g_applied)
+        // Not while the game has no bindings loaded (see ApplyOverrides_Hook): the game applies them
+        // itself once they are loaded again, and the hook sets these keys at that point.
+        if (g_applied && g_manager && g_manager->contextManager && g_manager->contextManager->userMapping)
             manager = g_manager;
     }
     // Through the hooked function, so every plugin that adds overrides takes part.

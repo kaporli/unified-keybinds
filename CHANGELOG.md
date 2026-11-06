@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1 (2026-11-06)
+
+- Fix: starting a new game crashed the game a few seconds in. The game clears its key bindings for a moment when a new game starts, and the keys were applied right then. They are now applied once the bindings are loaded again. Loading a save was not affected.
+
 ## 1.5.0 (2026-11-05)
 
 - Vanilla controller rebinding moved to an optional file, Vanilla Controller Rebinding. The main file keeps keyboard keys and the controller buttons of mod actions. Install the optional file as well to keep rebinding vanilla controller buttons.
