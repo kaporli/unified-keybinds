@@ -670,7 +670,7 @@ std::string Keybinds::StartKey(const Action& aAction, const std::map<std::string
 
 bool Keybinds::Fits(const Action& aAction, const std::string& aKey)
 {
-    if (!aAction.pad)
+    if (!aAction.pad || aKey == kUnbound)
         return true;
     auto trigger = [](const std::string& k) { return k == "IK_Pad_LeftTrigger" || k == "IK_Pad_RightTrigger"; };
     return aKey.rfind("IK_Pad", 0) == 0 && trigger(aKey) == trigger(aAction.defaultKey);

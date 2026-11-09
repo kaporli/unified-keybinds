@@ -58,7 +58,8 @@ public func Refresh() -> Void {
 @addField(SettingsMainGameController)
 private let m_modKeybindsPopup: ref<inkGameNotificationToken>;
 
-// The game applies key combinations from its input files at startup only.
+// The game applies key combinations from its input files at startup only. It also drops one of two
+// unbound buttons of a mapping (an action's key and controller button) until it restarts.
 @wrapMethod(SettingsMainGameController)
 public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   wrappedMethod(status);
@@ -76,7 +77,7 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   }
   let notice = ModKeybindsMenu_RestartNotice(names, keys);
   if notice {
-    this.ModKeybindsShowPopup("New key combinations apply after you restart the game. Single keys apply right away.");
+    this.ModKeybindsShowPopup("New key combinations, and keys the game dropped while unbound, apply after you restart the game. Other keys apply right away.");
   }
 }
 

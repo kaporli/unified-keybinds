@@ -76,7 +76,14 @@ std::mutex g_mutex;
 std::map<std::string, Entry> g_entries;
 std::map<std::pair<uint64_t, uint32_t>, Original> g_originals; // by mapping name hash and overridableUI hash
 Manager* g_manager = nullptr;
+// The bindings g_manager held when the game last applied them. A new game replaces them and frees
+// the old ones while g_manager can still point at them.
+ContextManager* g_context = nullptr;
+UserMapping* g_userMapping = nullptr;
 bool g_applied = false; // the game applied its bindings once
+bool g_pending = false; // keys set since the last Update
+bool g_stable = true;   // no session starting or ending
+DWORD g_mainThread = 0; // the thread Update runs on
 
 // EInputKey values by name, and the gamepad ones (a mod may put the same name on a pad button).
 struct Keys
@@ -102,6 +109,30 @@ const Keys& InputKeys()
         return out;
     }();
     return keys;
+}
+
+// The manager's bindings, false if they can't be read.
+bool ReadBindings(Manager* aManager, ContextManager** aContext, UserMapping** aMapping)
+{
+    __try
+    {
+        *aContext = aManager->contextManager;
+        *aMapping = *aContext ? (*aContext)->userMapping : nullptr;
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+// True when g_manager still holds the bindings the game last applied. Call with g_mutex held.
+bool BindingsUnchanged()
+{
+    ContextManager* context = nullptr;
+    UserMapping* mapping = nullptr;
+    return g_manager && g_userMapping && ReadBindings(g_manager, &context, &mapping) && context == g_context &&
+           mapping == g_userMapping;
 }
 
 // Returns true if a key changed.
@@ -150,10 +181,17 @@ void ApplyOverrides_Hook(Manager* aManager)
     // session starts (this one, Mod Settings, RCF) can call in then. The game's function reads the
     // missing bindings and crashes; there is nothing to apply until they are loaded again.
     if (!aManager || !aManager->contextManager || !aManager->contextManager->userMapping)
+    {
+        std::lock_guard lock(g_mutex);
+        g_userMapping = nullptr;
         return;
+    }
     {
         std::lock_guard lock(g_mutex);
         g_manager = aManager;
+        g_context = aManager->contextManager;
+        g_userMapping = g_context->userMapping;
+        g_pending = false;
         // Like the game's own handling of a changed binding, so it rebuilds its key lookup.
         if (Apply(aManager) && g_applied)
         {
@@ -169,6 +207,7 @@ void ApplyOverrides_Hook(Manager* aManager)
 
 bool InputOverrides::Attach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle)
 {
+    g_mainThread = GetCurrentThreadId();
     g_target = reinterpret_cast<void*>(static_cast<ApplyOverrides_t>(RED4ext::UniversalRelocFunc<ApplyOverrides_t>(kApplyOverrides)));
     return g_target && aSdk->hooking->Attach(aHandle, g_target, reinterpret_cast<void*>(&ApplyOverrides_Hook),
                                              reinterpret_cast<void**>(&g_original));
@@ -180,15 +219,44 @@ void InputOverrides::Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHan
         aSdk->hooking->Detach(aHandle, g_target);
 }
 
+bool InputOverrides::Dropped(const std::string& aName, const std::vector<std::string>& aMappings)
+{
+    static RED4ext::UniversalRelocFunc<CalcHash_t> calcHash(kCalcHash);
+    static RED4ext::UniversalRelocFunc<GetMappingCollection_t> getMappingCollection(kGetMappingCollection);
+    auto hash = calcHash(RED4ext::CString(aName.c_str()));
+    std::lock_guard lock(g_mutex);
+    // Only on the main thread, like Update.
+    if (GetCurrentThreadId() != g_mainThread || !g_stable || !BindingsUnchanged())
+        return false;
+    bool had = false;
+    for (const auto& m : aMappings)
+    {
+        RED4ext::CName mapName(m.c_str());
+        // Only mappings that had the binding when it was first applied.
+        if (!g_originals.contains({mapName.hash, hash}))
+            continue;
+        had = true;
+        auto collection = getMappingCollection(g_userMapping, mapName);
+        if (!collection)
+            continue;
+        for (const auto& row : collection->mappings)
+        {
+            if (row.overridable == hash)
+                return false;
+        }
+    }
+    return had;
+}
+
 #ifdef MKM_TEST
 std::vector<std::string> InputOverrides::LiveButtons(const std::string& aMapping)
 {
     static RED4ext::UniversalRelocFunc<GetMappingCollection_t> getMappingCollection(kGetMappingCollection);
     std::vector<std::string> out;
     std::lock_guard lock(g_mutex);
-    if (!g_manager || !g_manager->contextManager || !g_manager->contextManager->userMapping)
+    if (!BindingsUnchanged())
         return out;
-    auto collection = getMappingCollection(g_manager->contextManager->userMapping, RED4ext::CName(aMapping.c_str()));
+    auto collection = getMappingCollection(g_userMapping, RED4ext::CName(aMapping.c_str()));
     if (!collection)
         return out;
     for (const auto& m : collection->mappings)
@@ -208,28 +276,41 @@ void InputOverrides::Set(const std::vector<Key>& aKeys)
     static RED4ext::UniversalRelocFunc<CalcHash_t> calcHash(kCalcHash);
     const auto& byName = InputKeys().byName;
 
+    std::lock_guard lock(g_mutex);
+    for (const auto& k : aKeys)
+    {
+        // A name that is no key (a key combination) means the binding loaded at startup: the
+        // game only takes combinations from its input files.
+        auto key = byName.find(RED4ext::CName(k.key.c_str()));
+        Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, 0, key == byName.end(), k.pad};
+        if (!entry.original)
+            entry.key = key->second;
+        for (const auto& m : k.mappings)
+            entry.mappings.emplace_back(m.c_str());
+        g_entries[k.name] = std::move(entry);
+    }
+    g_pending = true;
+}
+
+void InputOverrides::SetStable(bool aStable)
+{
+    std::lock_guard lock(g_mutex);
+    g_stable = aStable;
+}
+
+void InputOverrides::Update()
+{
     Manager* manager = nullptr;
     {
         std::lock_guard lock(g_mutex);
-        for (const auto& k : aKeys)
-        {
-            // A name that is no key (a key combination) means the binding loaded at startup: the
-            // game only takes combinations from its input files.
-            auto key = byName.find(RED4ext::CName(k.key.c_str()));
-            Entry entry{calcHash(RED4ext::CString(k.name.c_str())), {}, 0, key == byName.end(), k.pad};
-            if (!entry.original)
-                entry.key = key->second;
-            for (const auto& m : k.mappings)
-                entry.mappings.emplace_back(m.c_str());
-            g_entries[k.name] = std::move(entry);
-        }
-        // Not while the game has no bindings loaded (see ApplyOverrides_Hook): the game applies them
-        // itself once they are loaded again, and the hook sets these keys at that point.
-        if (g_applied && g_manager && g_manager->contextManager && g_manager->contextManager->userMapping)
-            manager = g_manager;
+        // Not while the game has no bindings loaded or replaced them (a new game): it applies them
+        // itself once they are loaded, and the hook sets these keys at that point.
+        if (!g_pending || !g_applied || !g_stable || !BindingsUnchanged())
+            return;
+        g_pending = false;
+        manager = g_manager;
     }
     // Through the hooked function, so every plugin that adds overrides takes part.
-    if (manager)
-        reinterpret_cast<ApplyOverrides_t>(g_target)(manager);
+    reinterpret_cast<ApplyOverrides_t>(g_target)(manager);
 }
 

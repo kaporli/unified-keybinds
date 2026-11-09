@@ -30,7 +30,7 @@ public static native func ModKeybindsMenu_SetKeys(names: array<CName>, keys: arr
 // Keys of the key combination a mod action is bound to by default (value is its buttonGroup id), else empty
 public static native func ModKeybindsMenu_ComboKeys(value: CName) -> array<CName>
 
-// True when these keys change a key combination compared to startup (applies after a restart) and the player wasn't told yet
+// True when these keys change a key combination compared to startup, or bind an entry the game dropped while unbound (both apply after a restart), and the player wasn't told yet
 public static native func ModKeybindsMenu_RestartNotice(names: array<CName>, keys: array<CName>) -> Bool
 
 // Controller scheme the controller entries were made for: Legacy, Agile or Alternative
@@ -44,3 +44,6 @@ public static native func ModKeybindsMenu_WatchModifier() -> Void
 
 // The modifier key (Shift, Ctrl, Alt) held when the bound key went down, or None; ends the watch
 public static native func ModKeybindsMenu_HeldModifier() -> CName
+
+// False while a session starts or ends: keys set then are applied once it is true again
+public static native func ModKeybindsMenu_SetStable(stable: Bool) -> Void

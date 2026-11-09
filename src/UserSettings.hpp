@@ -30,7 +30,8 @@ std::string WithModSections(const std::filesystem::path& aSettings, const std::f
                             const std::vector<Keybinds::Action>& aActions);
 
 // Keys in aStore, by action name. A key that is the action's default when it was saved is left
-// out: the default can differ next session (another control scheme, another version).
+// out: the default can differ next session (another control scheme, another version). So is
+// "None" (never set); IK_None (unbound by the player) stays.
 std::map<std::string, std::string> SavedKeys(const std::filesystem::path& aStore);
 
 // Stores from before defaults were saved (1.4.0): drops the keys of controller entries that follow

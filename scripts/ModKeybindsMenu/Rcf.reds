@@ -120,12 +120,21 @@ public class ModKeybindsRcfSync extends ScriptableSystem {
     return Equals(this.m_mods[i], "_DVRCF_Framework");
   }
 
+  // RCF reads a hub key of 0 as F8, so an unbound hub key is kept as a key no keyboard sends
+  // (IK_Unknown0A, a reserved virtual key code).
+  private func UnboundHubKey() -> Int32 {
+    return 10;
+  }
+
   // RCF's key, or n"" while the mod isn't registered.
   private func RcfKey(i: Int32) -> CName {
     let raw: Int32;
     if this.IsFramework(i) {
       let settings = new DVRCFSettings();
       settings.Load(this.GetGameInstance());
+      if settings.openKey == this.UnboundHubKey() {
+        return n"IK_None";
+      }
       raw = settings.openKey > 0 ? settings.openKey : EnumInt(EInputKey.IK_F8);
     } else {
       let provider = this.Provider(i);
@@ -147,7 +156,7 @@ public class ModKeybindsRcfSync extends ScriptableSystem {
     if this.IsFramework(i) {
       let settings = new DVRCFSettings();
       settings.Load(gi);
-      settings.openKey = Cast<Int32>(value);
+      settings.openKey = Equals(key, n"IK_None") ? this.UnboundHubKey() : Cast<Int32>(value);
       settings.Save(gi);
       let hub = DVRCF_Hub.Get(gi);
       if IsDefined(hub) {

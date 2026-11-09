@@ -76,7 +76,8 @@ public class ModKeybindsSystem extends ScriptableSystem {
       if IsDefined(menu) {
         // Mod sections are kept out of UserSettings.json between sessions (see the plugin),
         // so a session starts with them empty: take Mod Settings' key, else the saved one,
-        // else the key from the mod's input file.
+        // else the key from the mod's input file. IK_None (unbound by the player) is a key
+        // like any other here; None means never set.
         let wanted = IsDefined(kb) ? kb.GetValueName() : menu.GetValue();
         // Mod Settings holds one key: a key combination picked in this menu stays.
         let savedCombo = StrContains(NameToString(saved[i]), "+");

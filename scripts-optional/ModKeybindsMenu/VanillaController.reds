@@ -487,6 +487,10 @@ public abstract class ModKeybindsScheme {
     for row in rows {
       if NotEquals(row.current, row.button) {
         let from = row.widget.GetParentWidget() as inkCompoundWidget;
+        // Unbound: left out of the drawing.
+        if Equals(row.current, n"IK_None") {
+          row.widget.SetVisible(false);
+        }
         let tab = ModKeybindsScheme.Tab(row.widget);
         let schemeCanvas = ModKeybindsScheme.Child(tab, scheme + "Scheme") as inkCompoundWidget;
         let to = ModKeybindsScheme.Group(tab, schemeCanvas, row.current, row.hold, playStation);

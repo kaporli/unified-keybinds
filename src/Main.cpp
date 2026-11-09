@@ -254,6 +254,16 @@ void SplitWrittenSettings()
 HANDLE WINAPI CreateFileW_Hook(LPCWSTR aName, DWORD aAccess, DWORD aShare, LPSECURITY_ATTRIBUTES aSec, DWORD aDisp,
                                DWORD aFlags, HANDLE aTemplate)
 {
+    if (!g_createFileW)
+    {
+        CREATEFILE2_EXTENDED_PARAMETERS params{sizeof(params)};
+        params.dwFileAttributes = aFlags & 0xFFFF;
+        params.dwFileFlags = aFlags & 0xFFF00000;
+        params.dwSecurityQosFlags = aFlags & 0x001F0000;
+        params.lpSecurityAttributes = aSec;
+        params.hTemplateFile = aTemplate;
+        return CreateFile2(aName, aAccess, aShare, aDisp, &params);
+    }
     if (!t_busy && IsUserSettingsFile(aName))
     {
         if (aAccess & (GENERIC_WRITE | FILE_WRITE_DATA))
@@ -316,8 +326,18 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR aName, DWORD aAccess, DWORD aShare, LPSEC
     return g_createFileW(aName, aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
 }
 
+// The hooks can run on another thread before Attach has stored the original function: call the system directly then.
+BOOL CloseHandle_Direct(HANDLE aHandle)
+{
+    using NtClose_t = LONG(NTAPI*)(HANDLE);
+    static auto ntClose = reinterpret_cast<NtClose_t>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtClose"));
+    return ntClose && ntClose(aHandle) >= 0;
+}
+
 BOOL WINAPI CloseHandle_Hook(HANDLE aHandle)
 {
+    if (!g_closeHandle)
+        return CloseHandle_Direct(aHandle);
     bool lastWrite = false;
     if (!t_busy)
     {
@@ -559,6 +579,15 @@ void Native_ComboKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     }
 }
 
+// False while a session starts or ends, see InputOverrides::SetStable.
+void Native_SetStable(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    bool stable = true;
+    RED4ext::GetParameter(aFrame, &stable);
+    aFrame->code++;
+    InputOverrides::SetStable(stable);
+}
+
 // Stored keys, for the first time the game applies its bindings.
 void SetStoredKeys()
 {
@@ -696,8 +725,9 @@ bool IsCombo(const Keybinds::Action& aAction, const std::string& aKey)
     return aKey.find('+') != std::string::npos || (aKey == aAction.defaultKey && !aAction.combo.empty());
 }
 
-// True when the keys the menu holds change a key combination compared to startup (those only
-// apply after a restart), and the player wasn't told about these changes yet.
+// True when the keys the menu holds change a key combination compared to startup, or bind an entry
+// whose binding the game dropped (those only apply after a restart), and the player wasn't told
+// about these changes yet.
 void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
 {
     RED4ext::DynArray<RED4ext::CName> names;
@@ -715,7 +745,14 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
             std::string key = keys[i].ToString();
             auto loaded = g_loaded.find(name);
             auto action = std::find_if(g_actions.begin(), g_actions.end(), [&](const auto& a) { return a.name == name; });
-            if (loaded == g_loaded.end() || action == g_actions.end() || key == loaded->second)
+            if (loaded == g_loaded.end() || action == g_actions.end())
+                continue;
+            if (key != Keybinds::kUnbound && InputOverrides::Dropped(name, action->mappings))
+            {
+                pending[name] = key;
+                continue;
+            }
+            if (key == loaded->second)
                 continue;
             if (IsCombo(*action, key) || IsCombo(*action, loaded->second))
                 pending[name] = key;
@@ -826,6 +863,12 @@ void PostRegisterTypes()
     setKeys->AddParam("array:CName", "names");
     setKeys->AddParam("array:CName", "keys");
     rtti->RegisterFunction(setKeys);
+
+    auto setStable =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetStable", "ModKeybindsMenu_SetStable", &Native_SetStable);
+    setStable->flags = flags;
+    setStable->AddParam("Bool", "stable");
+    rtti->RegisterFunction(setStable);
 
     auto comboKeys =
         RED4ext::CGlobalFunction::Create("ModKeybindsMenu_ComboKeys", "ModKeybindsMenu_ComboKeys", &Native_ComboKeys);
@@ -938,6 +981,14 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
 
         if (!InputOverrides::Attach(aSdk, aHandle))
             Log("Could not hook the game's key binding overrides, mod keys changed in the menu will not apply");
+        // Keys changed in a session are applied on the main thread, once per frame.
+        static RED4ext::v1::GameState running{nullptr, [](RED4ext::CGameApplication*) {
+                                                  InputOverrides::Update();
+                                                  return false;
+                                              },
+                                              nullptr};
+        if (!aSdk->gameStates->Add(aHandle, RED4ext::EGameStateType::Running, &running))
+            Log("Could not add the per-frame update, mod keys changed in the menu will not apply");
 
         auto rtti = RED4ext::CRTTISystem::Get();
         rtti->AddRegisterCallback(RegisterTypes);
@@ -967,7 +1018,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 5, 1);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 6, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

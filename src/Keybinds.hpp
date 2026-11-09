@@ -33,12 +33,16 @@ struct Action
 // rest of the name is that entry's. Its controller button gets this as overridableUI.
 inline constexpr const char* kPadPrefix = "MKPad_";
 
+// Key of an entry the player unbound (the game's own value for an action without a key). Kept as
+// the player's choice. An entry without a stored key ("None") was never set and gets the mod's key.
+inline constexpr const char* kUnbound = "IK_None";
+
 // The key an action starts a session with: RCF's for keys it keeps (the scripts copy every
 // change to RCF), else the one saved in the menu, else the mod's.
 std::string StartKey(const Action& aAction, const std::map<std::string, std::string>& aSaved);
 
 // False for a key a controller entry can't take: a keyboard key, or a trigger for a button or the
-// reverse (the game then drops the button from the mapping until it restarts).
+// reverse (the game then drops the button from the mapping until it restarts). Unbound fits any entry.
 bool Fits(const Action& aAction, const std::string& aKey);
 
 // The menu shows display names through the game's translation system, so options.json gets

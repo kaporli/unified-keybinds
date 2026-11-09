@@ -1,100 +1,83 @@
 [size=5][b]Every mod key and controller button, rebindable in the vanilla menu.[/b][/size]
 
-Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, all in the game's own Key Bindings menu. Vanilla controller buttons need the optional file [b]Vanilla Controller Rebinding[/b].
-
-Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to [b]Settings > Controls > Key Bindings[/b] with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. The list is built from your installed mods each time the game starts.
+The game only lets you rebind its own keyboard keys, and many mods keep theirs in input files or [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url], or hardcode them. Unified Keybinds adds a section per installed mod to [b]Settings > Controls > Key Bindings[/b], built from your mods at every startup, so you rebind everything in one place.
 
 [i]Formerly Native Mod Keybinds. Files and folders keep their names, so updating works as before.[/i]
 
-[size=4][b][color=#4caf50]Features[/color][/b][/size]
+[size=4][b]Features[/b][/size]
 [list]
-[*][color=#4caf50]One section per mod in [b]Settings > Controls > Key Bindings[/b], for example [i]"Mod: Let There Be Flight"[/i] or [i]"Mod: Stash QoL"[/i], built at startup from the mods you have installed. Add or remove a mod and the sections follow.[/color][/*]
-[*][color=#4caf50]Section and action names come from the mod's files, for example [i]"Vehicle Flight Linear Brake"[/i] or [i]"Transfer Max Quantity"[/i].[/color][/*]
-[*][color=#4caf50]Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.[/color][/*]
-[*][color=#4caf50]Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.[/color][/*]
-[*][color=#4caf50]Also lists the keys of mods that keep them in Redscript Configuration Framework, like DigitalVixen's [url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url] or [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url], with the mod's own names. A key changed here or in RCF's hub changes both.[/color][/*]
-[*][color=#4caf50]Also lists keys the mod didn't mark as rebindable (for example Enhanced Vehicle System's F1 to F4 and T).[/color][/*]
-[*][color=#4caf50]Key combinations are shown as their keys (for example [i]"F2 + 2"[/i]) and can be rebound to a single key. [b]Defaults[/b] puts the combination back from the next launch.[/color][/*]
-[*][color=#4caf50]Record your own combination: [b]hold a modifier (Shift, Ctrl or Alt) and press a key[/b], for example [i]"Ctrl + K"[/i]. A modifier pressed on its own is bound alone.[/color][/*]
-[*][color=#4caf50]A changed key applies right away, also for mods without a Mod Settings option.[/color][/*]
-[*][color=#4caf50][b]Controller rebinding[/b], which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard.[/color][/*]
-[*][color=#4caf50]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The [b]Control Scheme[/b] screen draws your bindings.[/color][/*]
-[*][color=#4caf50]Actions already in the Key Bindings menu (vanilla, or added by mods like No More Hard-coded Keybinds) are not listed twice.[/color][/*]
-[*][color=#4caf50]Never changes the game's files or other mods' files, so mods that edit the settings menu keep working.[/color][/*]
+[*]One section per mod with names from the mod's files, for example [i]"Mod: [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url]"[/i] with [i]"Vehicle Flight Linear Brake"[/i]. Add or remove a mod and the sections follow.[/*]
+[*]Also lists keys the mod didn't make rebindable, for example [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url]'s F1 to F4 and T. Actions already in the menu (vanilla, or from mods like [url=https://www.nexusmods.com/cyberpunk2077/mods/4008]No More Hard-coded Keybinds[/url]) are not listed twice.[/*]
+[*]A changed key applies right away and stays in sync with where the mod keeps it (see the table below).[/*]
+[*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Record your own: [b]hold Shift, Ctrl or Alt and press a key[/b] ([i]"Ctrl + K"[/i]). A modifier pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.[/*]
+[*][b]Controller rebinding[/b], which the game doesn't offer: with a controller in use, the menu shows controller buttons for mod actions, and switches back when you use the keyboard.[/*]
+[*][b]Unbinding[/b], which the game doesn't offer: point at any entry and press [b]X[/b] (Square on a controller). It stays unbound across save loads and restarts, and [b]Defaults[/b] brings the key back. [url=https://www.nexusmods.com/cyberpunk2077/mods/11429]Allow Unbound Actions[/url] is no longer needed, and still works alongside.[/*]
+[*]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla controller buttons too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). The [b]Control Scheme[/b] screen shows your bindings.[/*]
+[*]Never changes game or mod files, so mods that edit the settings menu keep working.[/*]
 [/list][size=4][b]Supported keybind sources[/b][/size]
 
 [table][tr][th]Status[/th]
 [th]Keybind source[/th]
 [th]Notes[/th]
 [/tr]
-[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
-[td][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] input file, with or without overridableUI (for example [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url])[/td]
-[td]Listed at startup, changes apply instantly.[/td]
+[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
+[td][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] input file, with or without [font=Courier New]overridableUI[/font] (for example [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url])[/td]
+[td]Listed at startup.[/td]
 [/tr]
-[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
+[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] key option[/td]
-[td]Kept in sync with Mod Settings both ways. A key combination stays in this menu only.[/td]
+[td]Kept in sync both ways. Key combinations stay in this menu only.[/td]
 [/tr]
-[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
+[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url][/td]
-[td]Uses Input Loader files and Mod Settings, so it works like both. Its hub key (F8) is kept in sync with RCF's Options.[/td]
+[td]Works like [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] and [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url]. Its hub key (F8) is kept in sync with RCF's Options.[/td]
 [/tr]
-[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
+[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url][/td]
-[td]Appears from the second launch after you install the mod. Single keys only. Kept in sync with its own tab.[/td]
+[td]Single keys. Kept in sync both ways.[/td]
 [/tr]
-[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
+[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/28308]Unified Mod Settings[/url][/td]
-[td]Edits Native Settings UI and Mod Settings keys, so it follows those rows.[/td]
+[td]Edits [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url] and [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] keys, so it follows those rows.[/td]
 [/tr]
-[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
+[tr][td][b][color=#e5be37]2nd launch[/color][/b][/td]
 [td]Mods that keep their keys in [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url]'s hub, like the [url=https://www.nexusmods.com/cyberpunk2077/mods/28390]DigitalVixen[/url] mods ([url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url] and others)[/td]
-[td]Appears from the second launch after you install the mod, with the mod's own names. Single keys and controller buttons. Kept in sync with RCF's hub both ways.[/td]
+[td]With the mod's own names. Single keys and controller buttons. Kept in sync both ways.[/td]
 [/tr]
-[tr][td][b]⏳ Not yet[/b][/td]
+[tr][td][b]⏳ Not yet[/b][/td]
 [td]...[/td]
 [td]If you notice a mod or framework that isn't mentioned here, [b]leave a comment[/b] and I'll look into supporting it.[/td]
 [/tr]
-[tr][td][b]⏳ Not yet[/b][/td]
-[td][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] hotkeys (registerHotkey, registerInput)[/td]
+[tr][td][b]⏳ Not yet[/b][/td]
+[td][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] hotkeys ([font=Courier New]registerHotkey[/font], [font=Courier New]registerInput[/font])[/td]
 [td]I'm still exploring a way to integrate these seamlessly.[/td]
 [/tr]
 [/table][size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
-[*][color=#e5be37][b]Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding. The game gives no warning when two actions share a controller button, and one of them may stop working.[/b][/color][/*]
-[*][color=#e5be37][b]Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.[/b][/color][/*]
-[*][color=#e5be37][b]A new key combination applies after a restart (a popup tells you). Single keys apply instantly.[/b][/color][/*]
-[*][color=#e5be37][b]Combinations are modifier + key, pressed within half a second. The game crashes with more than about 30 in total, so past that an action keeps its key.[/b][/color][/*]
-[*][color=#e5be37][b]A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.[/b][/color][/*]
-[*][color=#e5be37][b]Unbinding a key without a Mod Settings option resets it to the mod's default when a save loads.[/b][/color][/*]
+[*][color=#e5be37][b]Controller: an action is listed when exactly one button triggers it. Movement, aiming, attacking and stick axes stay as they are.[/b][/color][/*]
+[*][color=#e5be37][b]Controller: the game gives no warning when two actions share a button, and one of them may stop working.[/b][/color][/*]
+[*][color=#e5be37][b]A new key combination applies after a restart (a popup tells you), and so does rebinding an action whose key and controller button were both unbound. Combinations are modifier + key, pressed within half a second. The game crashes with more than about 30 in total, so past that an action keeps its key.[/b][/color][/*]
+[*][color=#e5be37][b]A mod that registers its input file late through [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url]'s plugin interface may only appear from the second launch.[/b][/color][/*]
 [/list][size=4][b]Requirements[/b][/size]
 [list]
 [*]Cyberpunk 2077 [b]2.5[/b][/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url][/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/1511]redscript[/url][/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url][/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url][/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] (optional, for keeping keys in sync with mods that also offer them there)[/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] and [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url] (optional, for the keys of mods that use Native Settings UI)[/*]
-[*][url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url] (optional, for the keys of mods that keep them there)[/*]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/1511]redscript[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url][/*]
+[*]Optional, for the keys kept there: [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] with [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url][/*]
 [/list][size=4][b]Installation[/b][/size]
-Install with Mod Organizer 2 or Vortex, or extract the archive into the Cyberpunk 2077 game folder. The files go to:
-[code]red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
-red4ext/plugins/ModKeybindsMenu/scripts/
-bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua[/code]The optional file Vanilla Controller Rebinding adds one file, installed the same way on top of the main file:
-[code]red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds[/code][size=4][b]Uninstallation[/b][/size]
-Remove the [i]red4ext/plugins/ModKeybindsMenu[/i] and [i]bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu[/i] folders. Optionally delete [i]r6/cache/modkeybinds/[/i], where the mod keys are kept. Nothing is written to your save.
-
-Updating from 1.0.0: [b]start the game once with 1.0.1 before uninstalling[/b], so your settings file gets cleaned up.
+Install with Mod Organizer 2 or Vortex, or extract into the game folder. The optional file goes on top of the main file. The files go to:
+[code]red4ext/plugins/ModKeybindsMenu/
+bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
+red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds (optional file)[/code][size=4][b]Uninstallation[/b][/size]
+Remove both [font=Courier New]ModKeybindsMenu[/font] folders. Optionally delete [font=Courier New]r6/cache/modkeybinds/[/font], where the mod keys are kept. Nothing is written to your save. On 1.0.0, [b]start the game once with a newer version before uninstalling[/b], so your settings file gets cleaned up.
 
 [size=4][b]For mod authors[/b][/size]
-Your action shows up if it has a [i]<button id="IK_..." overridableUI="yourActionName" />[/i] in an input file loaded by Input Loader. A Button mapping with a single keyboard or mouse key or key combination (buttonGroup) and no overridableUI shows up too, under the mapping's name. Nothing else is needed.
+Your action shows up if an [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] file gives it [font=Courier New]<button id="IK_..." overridableUI="yourActionName" />[/font], or if it is a [font=Courier New]Button[/font] mapping with a single key or key combination ([font=Courier New]buttonGroup[/font]) and no [font=Courier New]overridableUI[/font], listed under the mapping's name.
 
-For nicer names than the generated ones, ship [i]r6/config/modkeybinds/<YourMod>.json[/i]:
+For nicer names, ship [font=Courier New]r6/config/modkeybinds/<YourMod>.json[/font]:
 [code]{
 "_section": "Your Mod",
 "yourActionName": "Open Menu"
-}[/code][i]_section[/i] names the section for every action in that file. Names can also be LocKey#... keys.
+}[/code][font=Courier New]_section[/font] names the section for every action in that file. Names can also be [font=Courier New]LocKey#...[/font] keys.
 
 [size=4][b]Source[/b][/size]
 [url=https://github.com/kaporli/unified-keybinds]github.com/kaporli/unified-keybinds[/url] (MIT)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 (2026-11-09)
+
+- Unbinding: point at an entry in Key Bindings and press X (Square on a controller) to unbind it. Works for vanilla and mod actions, keyboard and controller entries; the hints show the key. The game itself has no way to clear a key.
+- With both an action's key and its controller button unbound, the game drops one of the two until it restarts, so binding that one again applies after a restart. A popup says so.
+- The menu keeps its changes with actions left unbound. Allow Unbound Actions is no longer needed, and still works alongside.
+- Fix: an unbound mod key went back to the mod's default when a save loaded, and an unbound controller entry kept its button. Unbound entries now stay unbound across save loads, new games and restarts, also with a Mod Settings option. Defaults brings the keys back, and an entry you never changed still gets the mod's key.
+- Redscript Configuration Framework's hub key (F8) can be unbound too. RCF reads an empty hub key as F8, so an unbound one is kept as a key no keyboard sends.
+- Fix: starting a new game could still crash the game when the world loaded. Keys are now held while a session starts or ends and applied once the game's key bindings are loaded, on the game's main thread.
+- Optional file: the Control Scheme screen leaves out unbound actions.
+
 ## 1.5.1 (2026-11-06)
 
 - Fix: starting a new game crashed the game a few seconds in. The game clears its key bindings for a moment when a new game starts, and the keys were applied right then. They are now applied once the bindings are loaded again. Loading a save was not affected.

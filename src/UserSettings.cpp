@@ -154,7 +154,8 @@ std::map<std::string, std::string> UserSettings::SavedKeys(const fs::path& aStor
     const auto& defaults = store.contains(kDefaults) && store[kDefaults].is_object() ? store[kDefaults] : none;
     for (const auto& [name, value] : store.items())
     {
-        if (!value.is_string())
+        // "None": an entry the game left empty, never set by the player (IK_None is unbound).
+        if (!value.is_string() || value == "None" || value == "")
             continue;
         if (auto d = defaults.find(name); d != defaults.end() && *d == value)
             continue;

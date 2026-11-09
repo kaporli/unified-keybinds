@@ -25,8 +25,21 @@ void Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle);
 
 // Keys used from now on. A key combination ("IK_LControl+IK_K", or a mod's buttonGroup id) keeps
 // the binding loaded at startup: the game only takes combinations from its input files. Applied
-// right away once the game has applied its own bindings.
+// at the next Update once the game has applied its own bindings.
 void Set(const std::vector<Key>& aKeys);
+
+// Applies keys set since the last call. Called once per frame from the game's main loop: the
+// scripts can set keys from another thread while the game replaces its bindings (a new game
+// starting), and applying them there read bindings the game had just freed.
+void Update();
+
+// False while a session starts or ends (the game replaces its bindings then): Update waits.
+void SetStable(bool aStable);
+
+// True when the game dropped the binding of this entry from its mappings. It keeps one of two
+// buttons with the same key in a mapping, so unbinding an action's key and its controller button
+// leaves only one: the other is bound again after a restart.
+bool Dropped(const std::string& aName, const std::vector<std::string>& aMappings);
 
 #ifdef MKM_TEST
 // Test builds: every button of a mapping as the input manager holds it now:
