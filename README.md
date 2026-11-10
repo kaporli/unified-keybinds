@@ -67,16 +67,13 @@ With the optional file, the Control Scheme screen shows your bindings. Defaults,
 - Key combinations are shown as their keys (for example *"F2 + 2"*) and can be rebound to a single key. Defaults puts the combination back from the next launch.
 - Record your own combination: hold one key and press another, for example *"Ctrl + K"* or *"Q + E"*, mouse buttons included. On a controller entry, hold one button and press another, for example *"LB + A"*. A key pressed on its own is bound alone. While an entry waits it says *"Press a key or combination"*, and the side panel says how to bind one.
 
-  ![Swap Firemode bound to Q + E, Jump bound to LB + A](screenshots/combination.png)
-
-  ![Side panel of a combination entry, keyboard and controller](screenshots/combination-panel.png)
+  ![Swap Firemode on Q + E and Jump on LB + A, with their side panels](screenshots/combination.png)
 
   ![The waiting prompt, keyboard and controller](screenshots/prompt.png)
 - A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. Applies after a restart.
 
-  ![Crouch (Hold) and Dodge/Dash on Mouse 4, Sprint (Hold) and Dodge on B](screenshots/shared-key.png)
+  ![Crouch (Hold) and Dodge/Dash on Mouse 4, Sprint (Hold) and Dodge on B, with their side panels](screenshots/shared-key.png)
 
-  ![Side panel of a (Hold) entry, keyboard and controller](screenshots/shared-key-panel.png)
 - A changed key applies right away, also for mods without a Mod Settings option.
 - Unbind any entry, vanilla or mod, keyboard or controller: point at it and press X (Square on a controller), shown in the hints. It stays unbound across save loads, new games and restarts; Defaults brings the key back. [Allow Unbound Actions](https://www.nexusmods.com/cyberpunk2077/mods/11429) is no longer needed, and still works alongside.
 - Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard. A controller entry takes only controller buttons of its kind (trigger or button) and a keyboard entry only keys.
