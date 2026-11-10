@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ModKeybindsMenu VERSION 1.6.0 LANGUAGES CXX)
+project(ModKeybindsMenu VERSION 1.7.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,8 @@ add_library(ModKeybindsMenu SHARED
   src/InputOverrides.hpp
   src/NativeSettings.cpp
   src/NativeSettings.hpp
+  src/AcceptedEvents.cpp
+  src/AcceptedEvents.hpp
   src/Rcf.cpp
   src/Rcf.hpp
   src/InputKeyNames.hpp

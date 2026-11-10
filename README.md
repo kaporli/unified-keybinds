@@ -2,7 +2,7 @@
 
 Every mod key and controller button, rebindable in the vanilla menu.
 
-Rebind any mod key, even ones the mod never made rebindable, set key combinations, and rebind controller buttons, all in the game's own Key Bindings menu. Vanilla controller buttons need the optional file Vanilla Controller Rebinding.
+Rebind any mod key, even ones the mod never made rebindable, set key and controller combinations, share a key between a tap and a hold action, and rebind controller buttons, all in the game's own Key Bindings menu. Vanilla controller buttons need the optional file Vanilla Controller Rebinding.
 
 Mods that add keys usually leave them in an input file, in Mod Settings, or both, and many can't be changed in game at all. The game itself only lets you rebind keyboard keys. Unified Keybinds adds a section per mod to Settings > Controls > Key Bindings with every action your installed mods add, and a controller view of the whole menu, so you can rebind everything in one place. Nothing is hardcoded: the list is built from your installed mods each time the game starts.
 
@@ -16,9 +16,12 @@ Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and fold
 > - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
 > - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
 > - Redscript Configuration Framework keys (the DigitalVixen mods, for example) appear from the second launch after you install the mod, and take a single key only.
-> - A new key combination, or going back to one, applies after a restart. A popup tells you. Single keys apply right away.
+> - A new key combination, or going back to one, applies after a restart, and so does a shared key. A popup tells you. Single keys apply right away.
 > - With both an action's key and its controller button unbound, the game drops one of the two until it restarts: binding that one again applies after a restart. A popup tells you.
-> - Combinations are modifier + key only. In game, press the key within half a second of the modifier.
+> - In game, press the second key of a combination within half a second of the first. The first key's own action then waits for its release, so holding it alone briefly acts like a tap.
+> - Controller combinations are recorded through XInput: Xbox controllers, and other controllers through Steam Input. A PlayStation controller on the game's own support may not record them (not tested).
+> - A key shared with a (Hold) action: the other action stops reacting to holding that key on that device (for example the pickpocket hold actions on B when Sprint (Hold) is on B). A tap still works.
+> - The tap or hold on a shared key relies on how game 2.5 keeps its input events. On another game version the plugin leaves that part out (the log says so) and the hold counts on keyboard and controller alike.
 > - A combination stays in this menu only: Mod Settings keeps its own single key.
 > - The game crashes with more than about 30 key combinations in total (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
 > - A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.
@@ -62,11 +65,22 @@ With the optional file, the Control Scheme screen shows your bindings. Defaults,
 - Section and action names come from the mod's files, for example *"Vehicle Flight Linear Brake"* or *"Transfer Max Quantity"*.
 - Also lists keys the mod didn't mark as rebindable (for example Enhanced Vehicle System's F1 to F4 and T).
 - Key combinations are shown as their keys (for example *"F2 + 2"*) and can be rebound to a single key. Defaults puts the combination back from the next launch.
-- Record your own combination: hold a modifier (Shift, Ctrl or Alt) and press a key, for example *"Ctrl + K"*. A modifier pressed on its own is bound alone.
+- Record your own combination: hold one key and press another, for example *"Ctrl + K"* or *"Q + E"*, mouse buttons included. On a controller entry, hold one button and press another, for example *"LB + A"*. A key pressed on its own is bound alone. While an entry waits it says *"Press a key or combination"*, and the side panel says how to bind one.
+
+  ![Swap Firemode bound to Q + E, Jump bound to LB + A](screenshots/combination.png)
+
+  ![Side panel of a combination entry, keyboard and controller](screenshots/combination-panel.png)
+
+  ![The waiting prompt, keyboard and controller](screenshots/prompt.png)
+- A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. Applies after a restart.
+
+  ![Crouch (Hold) and Dodge/Dash on Mouse 4, Sprint (Hold) and Dodge on B](screenshots/shared-key.png)
+
+  ![Side panel of a (Hold) entry, keyboard and controller](screenshots/shared-key-panel.png)
 - A changed key applies right away, also for mods without a Mod Settings option.
 - Unbind any entry, vanilla or mod, keyboard or controller: point at it and press X (Square on a controller), shown in the hints. It stays unbound across save loads, new games and restarts; Defaults brings the key back. [Allow Unbound Actions](https://www.nexusmods.com/cyberpunk2077/mods/11429) is no longer needed, and still works alongside.
 - Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard. A controller entry takes only controller buttons of its kind (trigger or button) and a keyboard entry only keys.
-- Optional file Vanilla Controller Rebinding: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The Control Scheme screen draws your bindings.
+- Optional file Vanilla Controller Rebinding: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The Control Scheme screen draws your bindings. Sprint (Hold) and Crouch (Hold) get controller entries too, unbound by default, like the keyboard has.
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 - Also lists the keys of mods that keep them in Redscript Configuration Framework (for example DigitalVixen's Shattered Chrome, Chrome Plating or Injuries), with the mod's own names. A key changed here or in RCF's hub changes both.
@@ -126,7 +140,9 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - A RED4ext plugin compares Input Loader's merged `r6/cache/inputUserMappings.xml` with the game's `r6/config/inputUserMappings.xml`. Every `overridableUI` action a mod added becomes an entry, and so does every mod `Button` mapping with a single key and no `overridableUI`.
 - The game reads a copy of the merged mappings with `overridableUI` added to those keys (`r6/cache/modkeybinds/inputUserMappings.xml`).
 - A key combination's entry holds its `buttonGroup` id, or `IK_LControl+IK_K` for one picked in the menu; the scripts draw it as its keys. At startup a picked combination is written into the action's own mapping in that copy, as a `buttonGroup`, since the game only watches combinations that an action uses when it loads.
-- The menu binds a key only once every key is released, so while an entry waits for a key the plugin checks the keyboard every 10 ms to see whether a modifier was held when the other key went down.
+- The menu binds a key only once every key is released, so while an entry waits for a key the plugin checks the keyboard and mouse every 10 ms (the controller through XInput) and notes a key pressed while another was held. A controller combination is written into the mapping copy as a `buttonGroup` the same way.
+- Shared keys of (Hold) actions: the plugin serves a copy of Input Loader's merged `r6/cache/inputContexts.xml` (`r6/cache/modkeybinds/inputContexts.xml`). A (Hold) action whose key or button another on-foot action also uses gets `acceptedEvents` "hold complete" and "released", so it starts after the game's 0.3 s hold and a tap goes to the other action. An action sharing the key that reacts to a hold gives that up. The Key Bindings menu checks conflicts through the `Settings*` contexts, which leave the shareable (Hold) actions out in the copy, so both entries keep the key; the game doesn't apply a keyboard key another binding uses, so the plugin writes it into the mapping copy.
+- The game keeps an action's accepted events per action, the same for every device. Its runtime object for an action holds a keyboard and a controller copy, and one in use that follows the device. Two hooks found by their code (the action object's constructor and the registration of an action's mapping, game 2.5) set those copies: the long press stays only on the device where the key is shared, and a script system reports the device in use (`InputSchemes.Device`). An object that doesn't look as expected is left alone.
 - When the game reads `r6/config/settings/platform/pc/options.json`, the plugin hands it a copy with one group per mod added, written to `r6/cache/modkeybinds/options.json`. The original file stays untouched.
 - Each section is named after the mod's folder or input file name; each action after its `overridableUI` name, minus a prefix that repeats the mod's name or initials.
 - The game resets every setting if `UserSettings.json` holds a group the menu doesn't define, which would happen after removing a mod with keys. So the mod sections never go into that file: the game reads a copy with them added (`r6/cache/modkeybinds/UserSettings.read.json`), and what it writes is split again, mod keys into `r6/cache/modkeybinds/keys.json`, everything else into `UserSettings.json`.

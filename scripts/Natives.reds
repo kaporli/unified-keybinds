@@ -39,11 +39,23 @@ public static native func ModKeybindsMenu_PadScheme() -> CName
 // True when this controller scheme differs from the one the controller entries were made for (they follow after a restart) and the player wasn't told yet
 public static native func ModKeybindsMenu_SchemeNotice(scheme: String) -> Bool
 
-// Starts watching the keyboard while an entry waits for a key
+// Starts watching the keyboard and mouse while an entry waits for a key
 public static native func ModKeybindsMenu_WatchModifier() -> Void
 
-// The modifier key (Shift, Ctrl, Alt) held when the bound key went down, or None; ends the watch
-public static native func ModKeybindsMenu_HeldModifier() -> CName
+// The two keys pressed together while the entry waited ("IK_Q+IK_E"), or empty; ends the watch
+public static native func ModKeybindsMenu_KeyCombo() -> String
+
+// Entries that may share their key with another action: the (Hold) bindings, keyboard and controller
+public static native func ModKeybindsMenu_HoldShareNames() -> array<CName>
+
+// The device in use changed (true: a controller). Hold-only controller buttons follow it
+public static native func ModKeybindsMenu_SetDevice(pad: Bool) -> Void
+
+// Starts watching the controller (XInput) while a controller entry waits for a button
+public static native func ModKeybindsMenu_WatchPad() -> Void
+
+// The two buttons pressed together while the entry waited ("IK_Pad_LeftShoulder+IK_Pad_A_CROSS"), or empty; ends the watch
+public static native func ModKeybindsMenu_PadCombo() -> String
 
 // False while a session starts or ends: keys set then are applied once it is true again
 public static native func ModKeybindsMenu_SetStable(stable: Bool) -> Void

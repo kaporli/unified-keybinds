@@ -1,12 +1,13 @@
 module ModKeybindsMenu
 
 // The Key Bindings menu holds one key per action. For the mod sections it also holds key
-// combinations: a mod's own (its buttonGroup id, like F2 then 2) and modifier + key picked here
+// combinations: a mod's own (its buttonGroup id, like F2 then 2) and two keys picked here
 // ("IK_LControl+IK_K"). They are shown as their keys.
 //
-// A key pressed while holding a modifier (Shift, Ctrl, Alt) makes the combination; a modifier
-// pressed and released on its own is bound alone. The game binds a key only once every key is
-// released, so the plugin watches the keyboard while the entry waits.
+// A key pressed while another is held makes the combination (held first); a key pressed and
+// released on its own is bound alone. The game binds a key only once every key is released, so the
+// plugin watches the keyboard and mouse while the entry waits. Controller entries work the same with
+// two buttons ("IK_Pad_LeftShoulder+IK_Pad_A_CROSS"), triggers left out.
 
 @addField(SettingsSelectorControllerKeyBinding)
 private let m_modKeybindsBinding: Bool;
@@ -14,21 +15,39 @@ private let m_modKeybindsBinding: Bool;
 @addField(SettingsSelectorControllerKeyBinding)
 private let m_modKeybindsCombo: CName;
 
+@addField(SettingsSelectorControllerKeyBinding)
+private let m_modKeybindsPadBinding: Bool;
+
 public class ModKeybindsComboEvent extends Event {}
 
 @wrapMethod(SettingsSelectorControllerKeyBinding)
 protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
-  if e.IsAction(n"click") || e.IsAction(n"tap") {
+  // A (Cross) can be part of a controller combination: pressed while waiting it must not restart the watch.
+  if (e.IsAction(n"click") || e.IsAction(n"tap")) && !this.IsListeningForInput() {
     let v = this.m_SettingsEntry as ConfigVarName;
     let padNames = ModKeybindsMenu_PadNames();
     // Native Settings UI and RCF mods read a single key, and controller buttons go alone.
     if IsDefined(v) && ModKeybindsIsModGroup(v) && !StrBeginsWith(NameToString(v.GetName()), "NSUI_")
-      && !ModKeybindsRcf.IsRcfKey(v.GetName()) && !ArrayContains(padNames, v.GetName()) {
-      this.m_modKeybindsBinding = true;
-      ModKeybindsMenu_WatchModifier();
+      && !ModKeybindsRcf.IsRcfKey(v.GetName()) {
+      let padEntry = ArrayContains(padNames, v.GetName());
+      // Trigger entries take a single trigger.
+      if !padEntry || !ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName())) {
+        this.m_modKeybindsBinding = true;
+        this.m_modKeybindsPadBinding = padEntry;
+        if padEntry {
+          ModKeybindsMenu_WatchPad();
+        } else {
+          ModKeybindsMenu_WatchModifier();
+        }
+      }
     }
   }
-  return wrappedMethod(e);
+  let result = wrappedMethod(e);
+  // The game's prompt while the entry waits says to press a key: this one says a combination works too.
+  if this.m_modKeybindsBinding && this.IsListeningForInput() {
+    inkTextRef.SetText(this.m_text, this.m_modKeybindsPadBinding ? "Press a button or combination" : "Press a key or combination");
+  }
+  return result;
 }
 
 @wrapMethod(SettingsSelectorControllerKeyBinding)
@@ -43,16 +62,61 @@ public func Refresh() -> Void {
   let keys = ModKeybindsMenu_ComboKeys(value);
   if this.m_modKeybindsBinding && !this.IsListeningForInput() {
     this.m_modKeybindsBinding = false;
-    let held = ModKeybindsMenu_HeldModifier();
-    if IsNameValid(held) && !ModKeybindsIsModifier(value) && ArraySize(keys) == 0 {
-      // The game is still storing its key: set the combination once it is done.
-      this.m_modKeybindsCombo = StringToName(NameToString(held) + "+" + NameToString(value));
+    let combo = StringToName(this.m_modKeybindsPadBinding ? ModKeybindsMenu_PadCombo() : ModKeybindsMenu_KeyCombo());
+    this.m_modKeybindsPadBinding = false;
+    let comboKeys = ModKeybindsMenu_ComboKeys(combo);
+    // Only when the game bound one of its keys, not after a cancel. The game is still storing its
+    // key: the combination is set once it is done.
+    if ArraySize(comboKeys) == 2 && (Equals(value, comboKeys[0]) || Equals(value, comboKeys[1])) {
+      this.m_modKeybindsCombo = combo;
       this.QueueEvent(new ModKeybindsComboEvent());
     }
   }
   if ArraySize(keys) >= 2 {
     inkRichTextBoxRef.SetText(this.m_text, ModKeybindsComboText(keys, v));
   }
+}
+
+// The side panel says how to bind a combination, and that a (Hold) binding can share its key. The
+// game shows one word ("Bind.") for every key binding, whatever options.json gives, so it is set here.
+@wrapMethod(SettingsMainGameController)
+protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
+  let result = wrappedMethod(evt);
+  let item = evt.GetCurrentTarget().GetController() as SettingsSelectorControllerKeyBinding;
+  if !IsDefined(item) {
+    return result;
+  }
+  let v = item.GetVar() as ConfigVarName;
+  if !IsDefined(v) {
+    return result;
+  }
+  // Native results go into a variable first: used inline as an argument the call doesn't run.
+  let padNames = ModKeybindsMenu_PadNames();
+  let sharing = ModKeybindsMenu_HoldShareNames();
+  let pad = ArrayContains(padNames, v.GetName());
+  let combo = ModKeybindsTakesCombo(v);
+  let share = ArrayContains(sharing, v.GetName());
+  if !combo && !share {
+    return result;
+  }
+  // In place of the game's "Bind.", laid out like its own panels: the description, the confirmation
+  // note, and a restart line in the panel's highlight color.
+  let thing = pad ? "button" : "key";
+  let text = "Bind a " + thing + ".";
+  if combo {
+    text += "\nCombination: hold a " + thing + ", then press another.";
+  }
+  if share {
+    text += "\nShared " + thing + ": tap for the other action, hold for this one.";
+  }
+  if Equals(item.GetVarUpdatePolicy(), ConfigVarUpdatePolicy.ConfirmationRequired) {
+    text += "\n\n" + GetLocalizedText("LocKey#76947");
+  }
+  let restart = combo && share ? "Combinations and shared " + thing + "s apply after a restart."
+    : (combo ? "Combinations apply after a restart." : "Shared " + thing + "s apply after a restart.");
+  text += "\n\n<Rich " + this.m_descriptionWarningRichColor + ">" + restart + "</>";
+  inkTextRef.SetText(this.m_descriptionText, text);
+  return result;
 }
 
 @addField(SettingsMainGameController)
@@ -77,7 +141,7 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   }
   let notice = ModKeybindsMenu_RestartNotice(names, keys);
   if notice {
-    this.ModKeybindsShowPopup("New key combinations, and keys the game dropped while unbound, apply after you restart the game. Other keys apply right away.");
+    this.ModKeybindsShowPopup("New key combinations, shared keys of (Hold) actions, and keys the game dropped while unbound apply after you restart the game. Other keys apply right away.");
   }
 }
 
@@ -104,14 +168,22 @@ protected cb func OnModKeybindsSetCombo(e: ref<ModKeybindsComboEvent>) -> Bool {
   return true;
 }
 
+// True for entries that take a key combination: mod keyboard entries (Native Settings UI and RCF
+// mods read a single key) and controller entries of a button (a trigger goes alone).
+private func ModKeybindsTakesCombo(v: ref<ConfigVarName>) -> Bool {
+  if !IsDefined(v) || !ModKeybindsIsModGroup(v) {
+    return false;
+  }
+  let padNames = ModKeybindsMenu_PadNames();
+  if ArrayContains(padNames, v.GetName()) {
+    return !ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName()));
+  }
+  return !StrBeginsWith(NameToString(v.GetName()), "NSUI_") && !ModKeybindsRcf.IsRcfKey(v.GetName());
+}
+
 private func ModKeybindsIsModGroup(v: ref<ConfigVarName>) -> Bool {
   // GetName gives the last part of the group path, e.g. SettingsModEnhancedVehicleSystem
   return StrContains(NameToString(v.GetGroup().GetName()), "SettingsMod");
-}
-
-private func ModKeybindsIsModifier(key: CName) -> Bool {
-  return Equals(key, n"IK_LShift") || Equals(key, n"IK_RShift") || Equals(key, n"IK_LControl")
-    || Equals(key, n"IK_RControl") || Equals(key, n"IK_Alt");
 }
 
 private func ModKeybindsComboText(keys: array<CName>, v: ref<ConfigVarName>) -> String {

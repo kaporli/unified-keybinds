@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0 (2026-11-10)
+
+- Controller combinations: on a controller entry, hold one button and press another, for example LB + A. A button pressed on its own is bound alone. Trigger entries take a single trigger.
+- Keyboard combinations take any two keys, mouse buttons included (before: Shift, Ctrl or Alt and a key).
+- An entry waiting for a key now says "Press a key or combination" ("button" on a controller), and the side panel says how to bind one. Vanilla entries keep the game's text.
+- A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so the other device stays as it was. A shared key applies after a restart.
+- An action that shares a key with a (Hold) action stops reacting to holding that key on that device, so the two don't both start (it still reacts to a tap).
+- Optional file: Sprint (Hold) and Crouch (Hold) get controller entries, unbound by default, like the keyboard has.
+
 ## 1.6.0 (2026-11-09)
 
 - Unbinding: point at an entry in Key Bindings and press X (Square on a controller) to unbind it. Works for vanilla and mod actions, keyboard and controller entries; the hints show the key. The game itself has no way to clear a key.

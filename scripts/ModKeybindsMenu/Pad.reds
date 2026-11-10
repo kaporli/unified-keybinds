@@ -52,6 +52,32 @@ public abstract class ModKeybindsPad {
   }
 }
 
+// Reports the device in use to the plugin: hold-only controller buttons wait for the hold only
+// while a controller is in use, keyboard keys of the same action don't.
+public class ModKeybindsDevice extends ScriptableSystem {
+  private let m_callback: ref<CallbackHandle>;
+
+  private func OnAttach() -> Void {
+    let defs = GetAllBlackboardDefs().InputSchemes;
+    let bb = GameInstance.GetBlackboardSystem(this.GetGameInstance()).Get(defs);
+    ModKeybindsMenu_SetDevice(ModKeybindsPad.IsPadDevice(bb.GetUint(defs.Device)));
+    this.m_callback = bb.RegisterListenerUint(defs.Device, this, n"OnDevice");
+  }
+
+  private func OnDetach() -> Void {
+    if IsDefined(this.m_callback) {
+      let defs = GetAllBlackboardDefs().InputSchemes;
+      GameInstance.GetBlackboardSystem(this.GetGameInstance()).Get(defs).UnregisterListenerUint(defs.Device, this.m_callback);
+      this.m_callback = null;
+    }
+  }
+
+  protected cb func OnDevice(value: Uint32) -> Bool {
+    ModKeybindsMenu_SetDevice(ModKeybindsPad.IsPadDevice(value));
+    return true;
+  }
+}
+
 public class ModKeybindsSchemeEvent extends Event {}
 
 @addField(SettingsMainGameController)

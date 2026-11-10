@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <Xinput.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -14,6 +15,8 @@
 
 #include <RED4ext/RED4ext.hpp>
 
+#include "AcceptedEvents.hpp"
+#include "InputKeyNames.hpp"
 #include "InputOverrides.hpp"
 #include "Keybinds.hpp"
 #include "NativeSettings.hpp"
@@ -34,6 +37,8 @@ fs::path g_settings;  // the game's UserSettings.json
 fs::path g_settingsRead;  // what the game reads: UserSettings.json with the mod sections
 fs::path g_settingsWrite; // what the game writes, split back into UserSettings.json and keys.json
 fs::path g_mappings;      // what the game reads: Input Loader's merged mappings, single keys made rebindable
+fs::path g_contexts;      // what the game reads: Input Loader's merged contexts, hold-only actions added
+std::vector<Keybinds::HoldOnly> g_holdOnly; // hold-only actions the session started with
 std::string g_scheme;     // controller scheme at startup (Legacy, Agile, Alternative)
 bool g_vanillaPads = false; // the optional Vanilla Controller file is installed
 
@@ -193,14 +198,22 @@ bool GenerateMappings(LPCWSTR aMerged)
             std::lock_guard lock(g_mutex);
             actions = g_actions;
         }
-        // Combinations picked in the menu ("modifier+key"), from the stored keys.
-        std::map<std::string, std::string> combos;
-        for (const auto& [name, key] : UserSettings::SavedKeys(g_store))
+        // The game doesn't apply a keyboard key that another binding uses: a (Hold) binding sharing
+        // its key gets it in the copy instead.
+        std::map<std::string, std::string> holdKeys;
+        auto game = Keybinds::GameKeys(g_settings);
+        for (const auto& a : Keybinds::WithHoldOptions(actions))
         {
-            if (key.find('+') != std::string::npos)
-                combos[name] = key;
+            if (!a.holdShare)
+                continue;
+            for (const auto& [group, options] : game)
+            {
+                auto key = options.find(a.holdOption);
+                if (key != options.end() && key->second.rfind("IK_", 0) == 0 && key->second != Keybinds::kUnbound)
+                    holdKeys[a.holdOption] = key->second;
+            }
         }
-        auto marked = Keybinds::MarkRebindable(aMerged, actions, combos, Log);
+        auto marked = Keybinds::MarkRebindable(aMerged, actions, UserSettings::SavedKeys(g_store), holdKeys, Log);
         if (marked.empty())
             return;
         std::ofstream out(g_mappings, std::ios::binary | std::ios::trunc);
@@ -209,6 +222,62 @@ bool GenerateMappings(LPCWSTR aMerged)
         ok = static_cast<bool>(out);
         if (!ok)
             Log("Could not write " + g_mappings.string());
+    });
+    return ok;
+}
+
+bool IsContextsFile(LPCWSTR aPath)
+{
+    if (!aPath)
+        return false;
+    std::wstring p(aPath);
+    for (auto& c : p)
+        c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
+    const std::wstring tail = L"\\r6\\cache\\inputcontexts.xml";
+    return p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0;
+}
+
+// Input Loader's merged contexts with the hold-only actions marked. Returns false to let the game
+// read the file as it is. The decisions also go to AcceptedEvents, which keeps the long press to the
+// device whose button is shared.
+bool GenerateContexts(LPCWSTR aMerged)
+{
+    static std::once_flag once;
+    static bool ok = false;
+    std::call_once(once, [&] {
+        EnsureCollected();
+        std::vector<Keybinds::Action> actions;
+        {
+            std::lock_guard lock(g_mutex);
+            actions = g_actions;
+        }
+        g_holdOnly = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), UserSettings::SavedKeys(g_store), g_settings);
+#ifdef MKM_TEST
+        // Test builds: a file next to the copies turns the hold-only rule off, to compare.
+        std::error_code ec;
+        if (fs::exists(g_contexts.parent_path() / "test-no-holdonly", ec))
+        {
+            Log("TEST: hold-only off");
+            g_holdOnly.clear();
+        }
+#endif
+        std::vector<Keybinds::EventRule> rules;
+        auto marked = Keybinds::MarkHoldOnly(aMerged, g_root / "r6" / "cache" / "inputUserMappings.xml", g_holdOnly,
+                                             rules, Log);
+        AcceptedEvents::Set(rules);
+        // The menu lets the (Hold) bindings share their key.
+        auto shareable = Keybinds::MarkShareable(marked.empty() ? ReadFile(aMerged) : marked,
+                                                 Keybinds::ShareableActions(Keybinds::WithHoldOptions(actions)), Log);
+        if (!shareable.empty())
+            marked = shareable;
+        if (marked.empty())
+            return;
+        std::ofstream out(g_contexts, std::ios::binary | std::ios::trunc);
+        out << marked;
+        out.close();
+        ok = static_cast<bool>(out);
+        if (!ok)
+            Log("Could not write " + g_contexts.string());
     });
     return ok;
 }
@@ -299,6 +368,15 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR aName, DWORD aAccess, DWORD aShare, LPSEC
         if (ok)
             return g_createFileW(g_settingsRead.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
         Log("Could not add the mod sections to " + fs::path(aName).string() + ", the game reads it as it is");
+    }
+
+    if (!t_busy && !(aAccess & (GENERIC_WRITE | FILE_WRITE_DATA)) && IsContextsFile(aName))
+    {
+        t_busy = true;
+        bool ok = GenerateContexts(aName);
+        t_busy = false;
+        if (ok)
+            return g_createFileW(g_contexts.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
     }
 
     if (!t_busy && !(aAccess & (GENERIC_WRITE | FILE_WRITE_DATA)) && IsMappingsFile(aName))
@@ -437,6 +515,25 @@ void Native_PadNames(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ex
     {
         if (a.pad)
             aOut->PushBack(RED4ext::CName(a.name.c_str()));
+    }
+}
+
+// Entries whose key may be shared with another action, since they then start on a long press: the
+// controller entries of the game's (Hold) bindings and those bindings' own keyboard options.
+void Native_HoldShareNames(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
+                           int64_t)
+{
+    aFrame->code++;
+    if (!aOut)
+        return;
+    EnsureCollected();
+    std::lock_guard lock(g_mutex);
+    for (const auto& a : Keybinds::WithHoldOptions(g_actions))
+    {
+        if (!a.holdShare)
+            continue;
+        aOut->PushBack(RED4ext::CName(a.name.c_str()));
+        aOut->PushBack(RED4ext::CName(a.holdOption.c_str()));
     }
 }
 
@@ -579,6 +676,34 @@ void Native_ComboKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     }
 }
 
+#ifdef MKM_TEST
+// Test builds: set one accepted-events list of the listed actions, see AcceptedEvents::TestLists.
+void Native_TestLists(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t list = -1, size = -1;
+    RED4ext::GetParameter(aFrame, &list);
+    RED4ext::GetParameter(aFrame, &size);
+    aFrame->code++;
+    for (const auto& c : AcceptedEvents::TakeChanged())
+        Log("Controller-only events: " + c);
+    auto text = AcceptedEvents::TestLists(list, size);
+    Log("TestLists " + std::to_string(list) + " " + std::to_string(size) + ": " + text);
+    if (aOut)
+        *aOut = RED4ext::CString(text.c_str());
+}
+#endif
+
+// The device in use changed (true: a controller), see AcceptedEvents::SetDevice.
+void Native_SetDevice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    bool pad = false;
+    RED4ext::GetParameter(aFrame, &pad);
+    aFrame->code++;
+    AcceptedEvents::SetDevice(pad);
+    for (const auto& c : AcceptedEvents::TakeChanged())
+        Log("Hold-only: " + c);
+}
+
 // False while a session starts or ends, see InputOverrides::SetStable.
 void Native_SetStable(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
 {
@@ -628,31 +753,39 @@ void Native_SetNativeSettings(RED4ext::IScriptable*, RED4ext::CStackFrame* aFram
         Log("Could not store the Native Settings UI key bindings");
 }
 
-// While an entry waits for a key: the modifier (Shift, Ctrl, Alt) that was held when another key
-// went down. The menu binds a key only once every key is released, too late to ask then.
-struct ModifierWatch
+// While an entry waits for a key: two keys pressed together. The menu binds a key only once every
+// key is released, too late to ask then.
+struct KeyWatch
 {
     std::mutex mutex;
     std::thread thread;
     std::atomic<bool> running = false;
-    std::string modifier; // result
+    std::string keyCombo; // keyboard and mouse: "held+pressed", or empty
+    std::string padCombo; // controller: "held+pressed", or empty
 };
-ModifierWatch g_watch;
+KeyWatch g_watch;
 
-const std::pair<int, const char*> kModifierKeys[] = {{VK_LCONTROL, "IK_LControl"}, {VK_RCONTROL, "IK_RControl"},
-                                                    {VK_LSHIFT, "IK_LShift"},     {VK_RSHIFT, "IK_RShift"},
-                                                    {VK_LMENU, "IK_Alt"},         {VK_RMENU, "IK_Alt"}};
-
-bool IsModifierVk(int aVk)
+// The game's name of a virtual key, or empty for keys left out: the left mouse button (it picks
+// the entry) and the generic Shift, Ctrl and Alt codes (their left and right keys are reported too).
+std::string KeyName(int aVk)
 {
-    if (aVk == VK_SHIFT || aVk == VK_CONTROL || aVk == VK_MENU)
-        return true;
-    for (const auto& [vk, name] : kModifierKeys)
+    switch (aVk)
     {
-        if (vk == aVk)
-            return true;
+    case VK_LBUTTON:
+    case VK_SHIFT:
+    case VK_CONTROL:
+    case VK_MENU: return {};
+    case VK_XBUTTON1: return "IK_Mouse4";
+    case VK_XBUTTON2: return "IK_Mouse5";
+    case VK_LMENU:
+    case VK_RMENU: return "IK_Alt";
     }
-    return false;
+    for (const auto& [value, name] : InputKeyNames::kAll)
+    {
+        if (value == aVk)
+            return std::string_view(name).starts_with("IK_Unknown") ? std::string() : std::string(name);
+    }
+    return {};
 }
 
 void StopWatch()
@@ -662,42 +795,125 @@ void StopWatch()
         g_watch.thread.join();
 }
 
+// A key pressed while another is held makes the combination (held first). A key pressed and
+// released on its own is bound alone.
 void StartWatch()
 {
     StopWatch();
     {
         std::lock_guard lock(g_watch.mutex);
-        g_watch.modifier.clear();
+        g_watch.keyCombo.clear();
     }
     g_watch.running = true;
     g_watch.thread = std::thread([] {
-        // Keys already down when the entry started waiting (the click) don't count.
-        std::array<bool, 256> wasDown{};
+        // Keys already down when the entry started waiting (the click) don't count until pressed again.
+        std::array<bool, 256> prev{};
         for (int vk = 1; vk < 256; ++vk)
-            wasDown[vk] = GetAsyncKeyState(vk) & 0x8000;
+            prev[vk] = GetAsyncKeyState(vk) & 0x8000;
+        int heldVk = 0;
+        std::string held;
         for (int i = 0; i < 1000 && g_watch.running; ++i) // 10 s at most
         {
-            std::string held;
-            for (const auto& [vk, name] : kModifierKeys)
+            std::array<bool, 256> down{};
+            for (int vk = 1; vk < 256; ++vk)
+                down[vk] = GetAsyncKeyState(vk) & 0x8000;
+            if (heldVk && !down[heldVk])
             {
-                if (GetAsyncKeyState(vk) & 0x8000)
-                {
-                    held = name;
-                    break;
-                }
+                heldVk = 0;
+                held.clear();
             }
             for (int vk = 1; vk < 256; ++vk)
             {
-                bool down = GetAsyncKeyState(vk) & 0x8000;
-                if (down && !wasDown[vk] && !IsModifierVk(vk))
+                if (!down[vk] || prev[vk])
+                    continue;
+                auto name = KeyName(vk);
+                if (name.empty() || name == held)
+                    continue;
+                if (!heldVk)
                 {
-                    std::lock_guard lock(g_watch.mutex);
-                    g_watch.modifier = held;
-                    g_watch.running = false;
-                    return;
+                    heldVk = vk;
+                    held = name;
+                    continue;
                 }
-                wasDown[vk] = down;
+                std::lock_guard lock(g_watch.mutex);
+                g_watch.keyCombo = held + "+" + name;
+                g_watch.running = false;
+                return;
             }
+            prev = down;
+            Sleep(10);
+        }
+        g_watch.running = false;
+    });
+}
+
+// Controller buttons as XInput reports them. Triggers stay out: a trigger is an axis to the game.
+const std::pair<WORD, const char*> kPadButtons[] = {
+    {XINPUT_GAMEPAD_A, "IK_Pad_A_CROSS"},          {XINPUT_GAMEPAD_B, "IK_Pad_B_CIRCLE"},
+    {XINPUT_GAMEPAD_X, "IK_Pad_X_SQUARE"},         {XINPUT_GAMEPAD_Y, "IK_Pad_Y_TRIANGLE"},
+    {XINPUT_GAMEPAD_LEFT_SHOULDER, "IK_Pad_LeftShoulder"}, {XINPUT_GAMEPAD_RIGHT_SHOULDER, "IK_Pad_RightShoulder"},
+    {XINPUT_GAMEPAD_LEFT_THUMB, "IK_Pad_LeftThumb"},       {XINPUT_GAMEPAD_RIGHT_THUMB, "IK_Pad_RightThumb"},
+    {XINPUT_GAMEPAD_START, "IK_Pad_Start"},        {XINPUT_GAMEPAD_BACK, "IK_Pad_Back_Select"},
+    {XINPUT_GAMEPAD_DPAD_UP, "IK_Pad_DigitUp"},    {XINPUT_GAMEPAD_DPAD_DOWN, "IK_Pad_DigitDown"},
+    {XINPUT_GAMEPAD_DPAD_LEFT, "IK_Pad_DigitLeft"}, {XINPUT_GAMEPAD_DPAD_RIGHT, "IK_Pad_DigitRight"}};
+
+// Buttons held on any connected controller. Loaded at run time, so the plugin starts without XInput.
+WORD PadButtonsDown()
+{
+    using XInputGetState_t = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+    static auto getState = [] {
+        auto dll = LoadLibraryW(L"xinput1_4.dll");
+        return dll ? reinterpret_cast<XInputGetState_t>(GetProcAddress(dll, "XInputGetState")) : nullptr;
+    }();
+    WORD down = 0;
+    for (DWORD i = 0; getState && i < XUSER_MAX_COUNT; ++i)
+    {
+        XINPUT_STATE state{};
+        if (getState(i, &state) == ERROR_SUCCESS)
+            down |= state.Gamepad.wButtons;
+    }
+    return down;
+}
+
+// While a controller entry waits for a button: a button pressed while another is held makes the
+// combination (held first). A button pressed and released on its own is bound alone.
+void StartPadWatch()
+{
+    StopWatch();
+    {
+        std::lock_guard lock(g_watch.mutex);
+        g_watch.padCombo.clear();
+    }
+    g_watch.running = true;
+    g_watch.thread = std::thread([] {
+        // Buttons already down when the entry started waiting don't count until pressed again.
+        WORD prev = PadButtonsDown();
+        WORD heldBit = 0;
+        std::string held;
+        for (int i = 0; i < 1000 && g_watch.running; ++i) // 10 s at most
+        {
+            WORD down = PadButtonsDown();
+            if (heldBit && !(down & heldBit))
+            {
+                heldBit = 0;
+                held.clear();
+            }
+            for (const auto& [bit, name] : kPadButtons)
+            {
+                if (!(down & bit) || (prev & bit))
+                    continue;
+                if (!heldBit)
+                {
+                    heldBit = bit;
+                    held = name;
+                    continue;
+                }
+                std::lock_guard lock(g_watch.mutex);
+                g_watch.padCombo = held + "+" + name;
+                g_watch.running = false;
+                return;
+            }
+            prev = down;
             Sleep(10);
         }
         g_watch.running = false;
@@ -710,14 +926,32 @@ void Native_WatchModifier(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, v
     StartWatch();
 }
 
-// The modifier held when the bound key went down, or None; ends the watch.
-void Native_HeldModifier(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+void Native_WatchPad(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    aFrame->code++;
+    StartPadWatch();
+}
+
+// The controller combination pressed while the entry waited ("held+pressed"), or empty; ends the watch.
+// A String: a CName made here would not be in the name pool, so the scripts make it (StringToName).
+void Native_PadCombo(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     aFrame->code++;
     StopWatch();
     std::lock_guard lock(g_watch.mutex);
     if (aOut)
-        *aOut = g_watch.modifier.empty() ? RED4ext::CName() : RED4ext::CName(g_watch.modifier.c_str());
+        *aOut = RED4ext::CString(g_watch.padCombo.c_str());
+}
+
+// The keyboard or mouse combination pressed while the entry waited ("held+pressed"), or empty;
+// ends the watch. A String, like PadCombo.
+void Native_KeyCombo(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    aFrame->code++;
+    StopWatch();
+    std::lock_guard lock(g_watch.mutex);
+    if (aOut)
+        *aOut = RED4ext::CString(g_watch.keyCombo.c_str());
 }
 
 bool IsCombo(const Keybinds::Action& aAction, const std::string& aKey)
@@ -754,8 +988,34 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
             }
             if (key == loaded->second)
                 continue;
-            if (IsCombo(*action, key) || IsCombo(*action, loaded->second))
+            // A controller entry without a default button has no row until it has a saved button.
+            bool noRow = action->pad && action->defaultKey == Keybinds::kUnbound && loaded->second == Keybinds::kUnbound;
+            if (IsCombo(*action, key) || IsCombo(*action, loaded->second) || noRow)
                 pending[name] = key;
+        }
+    }
+    // Hold-only actions follow from shared buttons, read when the game loads its contexts.
+    {
+        std::vector<Keybinds::Action> actions;
+        std::map<std::string, std::string> current;
+        {
+            std::lock_guard lock(g_mutex);
+            actions = g_actions;
+        }
+        for (uint32_t i = 0; i < names.size() && i < keys.size(); ++i)
+            current[names[i].ToString()] = keys[i].ToString();
+        auto now = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), current, g_settings);
+        auto same = now.size() == g_holdOnly.size() &&
+                    std::equal(now.begin(), now.end(), g_holdOnly.begin(), [](const auto& a, const auto& b) {
+                        return a.action == b.action && a.controller == b.controller && a.keyboard == b.keyboard &&
+                               a.padMappings == b.padMappings && a.keyOptions == b.keyOptions;
+                    });
+        if (!same)
+        {
+            std::string text;
+            for (const auto& h : now)
+                text += h.action + (h.controller ? "c" : "") + (h.keyboard ? "k" : "") + ";";
+            pending["holdOnly"] = text;
         }
     }
     bool notice = !pending.empty() && pending != g_announced;
@@ -776,6 +1036,67 @@ void Native_TestMapping(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED
         return;
     for (const auto& s : InputOverrides::LiveButtons(name.c_str()))
         aOut->PushBack(RED4ext::CString(s.c_str()));
+}
+
+bool CopyGuarded(uint8_t* aTo, const uint8_t* aFrom, size_t aSize)
+{
+    __try
+    {
+        memcpy(aTo, aFrom, aSize);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+// Test builds: every 8-byte aligned copy of a CName hash in writable private memory, with 0x100 bytes
+// around it, written to red4ext/logs/mkm-scan-<name>.txt. Returns the hit count.
+void Native_TestScan(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+{
+    RED4ext::CString name;
+    RED4ext::GetParameter(aFrame, &name);
+    aFrame->code++;
+    uint64_t hash = RED4ext::CName(name.c_str()).hash;
+    std::ofstream out(g_root / "red4ext" / "logs" / ("mkm-scan-" + std::string(name.c_str()) + ".txt"));
+    out << std::hex << "hash " << hash << "\n";
+    int32_t hits = 0;
+    MEMORY_BASIC_INFORMATION mbi{};
+    for (auto addr = reinterpret_cast<uint8_t*>(0x10000); VirtualQuery(addr, &mbi, sizeof(mbi)) == sizeof(mbi);
+         addr = static_cast<uint8_t*>(mbi.BaseAddress) + mbi.RegionSize)
+    {
+        if (mbi.State != MEM_COMMIT || mbi.Type != MEM_PRIVATE || (mbi.Protect & PAGE_GUARD) ||
+            !(mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)))
+            continue;
+        auto base = static_cast<uint8_t*>(mbi.BaseAddress);
+        // Copied first: another thread can free the region while it is read.
+        std::vector<uint8_t> copy(mbi.RegionSize);
+        if (!CopyGuarded(copy.data(), base, mbi.RegionSize))
+            continue;
+        auto words = reinterpret_cast<const uint64_t*>(copy.data());
+        size_t n = mbi.RegionSize / 8;
+        for (size_t i = 0; i < n && hits < 2000; ++i)
+        {
+            if (words[i] != hash)
+                continue;
+            ++hits;
+            auto cbase = copy.data();
+            auto cat = cbase + i * 8;
+            auto from = std::max(cbase, cat - 0x80);
+            auto to = std::min(cbase + mbi.RegionSize, cat + 0x80);
+            out << "hit " << reinterpret_cast<uintptr_t>(base + i * 8) << " off " << (cat - from) << "\n";
+            for (auto b = from; b < to; ++b)
+            {
+                char buf[4];
+                snprintf(buf, sizeof(buf), "%02x", *b);
+                out << buf << (((b - from) % 32) == 31 ? "\n" : " ");
+            }
+            out << "\n";
+        }
+    }
+    if (aOut)
+        *aOut = hits;
 }
 
 void Native_TestHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
@@ -838,6 +1159,13 @@ void PostRegisterTypes()
     padNames->SetReturnType("array:CName");
     rtti->RegisterFunction(padNames);
 
+
+    auto holdShare = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_HoldShareNames", "ModKeybindsMenu_HoldShareNames",
+                                                      &Native_HoldShareNames);
+    holdShare->flags = flags;
+    holdShare->SetReturnType("array:CName");
+    rtti->RegisterFunction(holdShare);
+
     auto padScheme =
         RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadScheme", "ModKeybindsMenu_PadScheme", &Native_PadScheme);
     padScheme->flags = flags;
@@ -890,11 +1218,38 @@ void PostRegisterTypes()
     watchModifier->flags = flags;
     rtti->RegisterFunction(watchModifier);
 
-    auto heldModifier = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_HeldModifier", "ModKeybindsMenu_HeldModifier",
-                                                         &Native_HeldModifier);
-    heldModifier->flags = flags;
-    heldModifier->SetReturnType("CName");
-    rtti->RegisterFunction(heldModifier);
+    auto keyCombo =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_KeyCombo", "ModKeybindsMenu_KeyCombo", &Native_KeyCombo);
+    keyCombo->flags = flags;
+    keyCombo->SetReturnType("String");
+    rtti->RegisterFunction(keyCombo);
+
+#ifdef MKM_TEST
+    auto testLists =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestLists", "ModKeybindsMenu_TestLists", &Native_TestLists);
+    testLists->flags = flags;
+    testLists->AddParam("Int32", "list");
+    testLists->AddParam("Int32", "size");
+    testLists->SetReturnType("String");
+    rtti->RegisterFunction(testLists);
+#endif
+
+    auto setDevice =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetDevice", "ModKeybindsMenu_SetDevice", &Native_SetDevice);
+    setDevice->flags = flags;
+    setDevice->AddParam("Bool", "pad");
+    rtti->RegisterFunction(setDevice);
+
+    auto watchPad =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_WatchPad", "ModKeybindsMenu_WatchPad", &Native_WatchPad);
+    watchPad->flags = flags;
+    rtti->RegisterFunction(watchPad);
+
+    auto padCombo =
+        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadCombo", "ModKeybindsMenu_PadCombo", &Native_PadCombo);
+    padCombo->flags = flags;
+    padCombo->SetReturnType("String");
+    rtti->RegisterFunction(padCombo);
 
     auto nativeSettings = RED4ext::CGlobalFunction::Create(
         "ModKeybindsMenu_SetNativeSettings", "ModKeybindsMenu_SetNativeSettings", &Native_SetNativeSettings);
@@ -916,6 +1271,12 @@ void PostRegisterTypes()
     testHash->AddParam("String", "name");
     testHash->SetReturnType("Int32");
     rtti->RegisterFunction(testHash);
+
+    auto testScan = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestScan", "ModKeybindsMenu_TestScan", &Native_TestScan);
+    testScan->flags = flags;
+    testScan->AddParam("String", "name");
+    testScan->SetReturnType("Int32");
+    rtti->RegisterFunction(testScan);
 #endif
 
     SetStoredKeys();
@@ -939,6 +1300,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_settingsRead = g_root / "r6" / "cache" / "modkeybinds" / "UserSettings.read.json";
         g_settingsWrite = g_root / "r6" / "cache" / "modkeybinds" / "UserSettings.write.json";
         g_mappings = g_root / "r6" / "cache" / "modkeybinds" / "inputUserMappings.xml";
+        g_contexts = g_root / "r6" / "cache" / "modkeybinds" / "inputContexts.xml";
         std::error_code ec;
         fs::create_directories(g_generated.parent_path(), ec);
 
@@ -981,6 +1343,8 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
 
         if (!InputOverrides::Attach(aSdk, aHandle))
             Log("Could not hook the game's key binding overrides, mod keys changed in the menu will not apply");
+        if (!AcceptedEvents::Attach(aSdk, aHandle))
+            Log("Could not hook the game's input event lists (other game version?), hold-only controller buttons apply to the keyboard too");
         // Keys changed in a session are applied on the main thread, once per frame.
         static RED4ext::v1::GameState running{nullptr, [](RED4ext::CGameApplication*) {
                                                   InputOverrides::Update();
@@ -1002,6 +1366,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
     {
         StopWatch();
         InputOverrides::Detach(aSdk, aHandle);
+        AcceptedEvents::Detach(aSdk, aHandle);
         auto target = GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "CreateFileW");
         if (target && g_createFileW)
             aSdk->hooking->Detach(aHandle, reinterpret_cast<void*>(target));
@@ -1018,7 +1383,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 6, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 7, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }
