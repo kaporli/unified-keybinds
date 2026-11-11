@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 #include <json.hpp>
@@ -22,6 +23,10 @@ constexpr const char* kSchemes = "_schemes";
 constexpr const char* kPadGroup = "/key_bindings/SettingsModPad";
 
 std::string g_scheme; // control scheme in use
+
+// One reader or writer of the store at a time: the game's threads and the scripts both come here,
+// and a read during a write would see half a file (and take it for a store without keys).
+std::recursive_mutex g_storeMutex;
 
 bool IsGamePadGroup(const std::string& aGroup)
 {
@@ -64,6 +69,13 @@ json ReadStore(const fs::path& aStore)
 {
     auto text = Read(aStore);
     auto data = json::parse(text, nullptr, false);
+    if (!data.is_object() && text.find_first_not_of(" \t\r\n") != std::string::npos)
+    {
+        // Once more before the file counts as damaged: another program may be writing it.
+        Sleep(30);
+        text = Read(aStore);
+        data = json::parse(text, nullptr, false);
+    }
     if (data.is_object())
         return data;
     if (text.find_first_not_of(" \t\r\n") != std::string::npos)
@@ -76,11 +88,12 @@ json ReadStore(const fs::path& aStore)
     return json::object();
 }
 
-// Writes the store, keeping the version before it as keys.json.bak.
+// Writes the store, keeping the version before it as keys.json.bak (only a version that can be
+// read: a damaged file must not replace the last good backup).
 bool WriteStore(const fs::path& aStore, const json& aData)
 {
     std::error_code ec;
-    if (fs::exists(aStore, ec))
+    if (fs::exists(aStore, ec) && json::parse(Read(aStore), nullptr, false).is_object())
     {
         auto bak = aStore;
         bak += ".bak";
@@ -137,6 +150,7 @@ bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const
     if (settings.is_null())
         return false;
 
+    std::lock_guard lock(g_storeMutex);
     auto store = ReadStore(aStore);
     auto& groups = settings["data"];
     std::size_t moved = 0;
@@ -219,6 +233,7 @@ std::string UserSettings::WithModSections(const fs::path& aSettings, const fs::p
 std::map<std::string, std::string> UserSettings::SavedKeys(const fs::path& aStore)
 {
     std::map<std::string, std::string> out;
+    std::lock_guard lock(g_storeMutex);
     // Kept in a variable: items() refers to the json, which a temporary would not outlive.
     auto store = ReadStore(aStore);
     const json none = json::object();
@@ -249,6 +264,7 @@ void UserSettings::SetScheme(const std::string& aScheme)
 void UserSettings::MoveToSchemes(const fs::path& aStore, const std::vector<Keybinds::Action>& aActions,
                                  const Keybinds::LogFn& aLog)
 {
+    std::lock_guard lock(g_storeMutex);
     auto store = ReadStore(aStore);
     if (g_scheme.empty() || store.empty() || store.contains(kSchemes))
         return;
@@ -290,6 +306,7 @@ void UserSettings::MoveToSchemes(const fs::path& aStore, const std::vector<Keybi
 
 bool UserSettings::SchemeEdited(const fs::path& aStore, const std::string& aScheme)
 {
+    std::lock_guard lock(g_storeMutex);
     auto store = ReadStore(aStore);
     if (!store.contains(kSchemes) || !store[kSchemes].is_object() || !store[kSchemes].contains(aScheme))
         return false;
@@ -312,6 +329,7 @@ bool UserSettings::SchemeEdited(const fs::path& aStore, const std::string& aSche
 void UserSettings::DropUnrecordedSchemeKeys(const fs::path& aStore, const std::vector<Keybinds::Action>& aActions,
                                             const Keybinds::LogFn& aLog)
 {
+    std::lock_guard lock(g_storeMutex);
     auto store = ReadStore(aStore);
     if (store.empty() || store.contains(kDefaults))
         return;

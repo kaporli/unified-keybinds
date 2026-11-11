@@ -1061,7 +1061,9 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     std::map<std::string, std::vector<std::pair<std::string, std::string>>> rows; // mapping -> (entry, button)
     for (const auto& a : aActions)
     {
-        if (!a.pad || a.defaultKey != kUnbound)
+        // Only entries the plugin made for a game option (MKPad_...): another source's controller key
+        // has its own row.
+        if (!a.pad || a.defaultKey != kUnbound || a.name.rfind(kPadPrefix, 0) != 0)
             continue;
         auto saved = aSaved.find(a.name);
         bool bound = saved != aSaved.end() && saved->second.rfind("IK_Pad", 0) == 0;
@@ -1695,22 +1697,42 @@ ContextIndex ReadContextIndex(const fs::path& aContexts)
     }
     return out;
 }
+// The merged contexts don't change after startup: read once per file (the menu asks on every change).
+const ContextIndex& CachedIndex(const fs::path& aContexts)
+{
+    static std::mutex mutex;
+    static std::map<fs::path, ContextIndex> read;
+    std::lock_guard lock(mutex);
+    auto found = read.find(aContexts);
+    if (found == read.end())
+        found = read.emplace(aContexts, ReadContextIndex(aContexts)).first;
+    return found->second;
+}
 } // namespace
+
+std::vector<std::string> Keybinds::FedActions(const fs::path& aContexts, const std::vector<std::string>& aMappings)
+{
+    std::vector<std::string> out;
+    const auto& feeds = CachedIndex(aContexts).feeds;
+    for (const auto& m : aMappings)
+    {
+        auto fed = feeds.find(m);
+        if (fed == feeds.end())
+            continue;
+        for (const auto& a : fed->second)
+        {
+            if (std::find(out.begin(), out.end(), a) == out.end())
+                out.push_back(a);
+        }
+    }
+    return out;
+}
 
 std::vector<std::vector<std::string>> Keybinds::Conflicts(const fs::path& aContexts,
                                                           const std::vector<BindingEntry>& aEntries)
 {
     std::vector<std::vector<std::string>> out(aEntries.size());
-    // The merged contexts don't change after startup: read once (the menu asks on every change).
-    static std::mutex mutex;
-    static fs::path readFrom;
-    static ContextIndex index;
-    std::lock_guard lock(mutex);
-    if (readFrom != aContexts)
-    {
-        index = ReadContextIndex(aContexts);
-        readFrom = aContexts;
-    }
+    const auto& index = CachedIndex(aContexts);
     const auto& feeds = index.feeds;
     const auto& together = index.together;
 

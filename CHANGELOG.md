@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.1 (2026-11-11)
+
+- Fix: the scripts did not compile without Mod Settings installed. Mod Settings is optional again, as the requirements say.
+- Fix: a damaged `keys.json` could replace the good backup. The backup is now only taken from a file that can be read, and the file is never read while it is being written.
+- Fix: after a game crash during a settings save, the next launch could use the wrong control scheme for the controller entries.
+- Fix: the restart popup could name entries that had not changed.
+- Fix: a second popup could close one that was still open.
+- A quick tap of Sprint (Toggle) is recognised more reliably after long sessions.
+- A button shared during play also counts for the prompt priority at once.
+- Optional file: on Classic, the mod's double tap only takes over when Dodge/Dash is moved off its default button, and it uses the game's timing (each press up to 0.2 s). The default button is left to the game.
+- Optional file: the quick scan on Alternative no longer fires during a breach protocol.
+- The side panel's conflict line is worked out only when a key changed, and less work is done on every key change.
+
 ## 1.8.0 (2026-11-11)
 
 - Conflict warning: when two actions that react at the same time share a key or button, a popup lists the keys and the side panel of each entry names what shares it, in red. The game only checks its own keyboard keys.

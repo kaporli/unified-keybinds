@@ -16,8 +16,16 @@ public class ModKeybindsPrompt extends ScriptableSystem {
   private let m_lootCallback: ref<CallbackHandle>;
   private let m_deviceCallback: ref<CallbackHandle>;
 
-  private func OnAttach() -> Void {
-    for line in ModKeybindsMenu_HoldRules() {
+  // The hold-only actions as the buttons are now: a button shared during play counts at once.
+  private func LoadRules() -> Void {
+    ArrayClear(this.m_actions);
+    ArrayClear(this.m_keyboard);
+    ArrayClear(this.m_controller);
+    ArrayClear(this.m_keyboardShared);
+    ArrayClear(this.m_controllerShared);
+    // Native results go into a variable first: used inline the call doesn't run.
+    let rules = ModKeybindsMenu_HoldRules();
+    for line in rules {
       // The plugin writes "-" for a device without shared actions: StrSplit leaves out empty parts.
       let parts = StrSplit(line, "|");
       if ArraySize(parts) == 5 {
@@ -28,9 +36,9 @@ public class ModKeybindsPrompt extends ScriptableSystem {
         ArrayPush(this.m_controllerShared, "," + parts[4] + ",");
       }
     }
-    if ArraySize(this.m_actions) == 0 {
-      return;
-    }
+  }
+
+  private func OnAttach() -> Void {
     let defs = GetAllBlackboardDefs();
     let ui = GameInstance.GetBlackboardSystem(this.GetGameInstance()).Get(defs.UIInteractions);
     this.m_hubCallback = ui.RegisterListenerVariant(defs.UIInteractions.InteractionChoiceHub, this, n"OnPromptsChanged");
@@ -85,6 +93,7 @@ public class ModKeybindsPrompt extends ScriptableSystem {
   }
 
   private func Update() -> Void {
+    this.LoadRules();
     let defs = GetAllBlackboardDefs();
     let pad = ModKeybindsPad.IsPadDevice(GameInstance.GetBlackboardSystem(this.GetGameInstance()).Get(defs.InputSchemes).GetUint(defs.InputSchemes.Device));
     let prompts = this.PromptActions();

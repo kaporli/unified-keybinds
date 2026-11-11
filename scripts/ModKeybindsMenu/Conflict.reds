@@ -10,6 +10,12 @@ private let m_modKeybindsConflictNames: array<CName>;
 @addField(SettingsMainGameController)
 private let m_modKeybindsConflictLists: array<String>; // per name: the other entries' labels
 
+@addField(SettingsMainGameController)
+private let m_modKeybindsConflictKeys: String; // the keys the last check was made for
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsConflictLines: String; // ...and its popup lines
+
 // Every key binding entry, vanilla and mod.
 @addMethod(SettingsMainGameController)
 private func ModKeybindsKeyVars() -> array<ref<ConfigVarName>> {
@@ -66,12 +72,7 @@ private func ModKeybindsKeyIcon(v: ref<ConfigVarName>) -> String {
   if ArraySize(keys) == 0 {
     ArrayPush(keys, v.GetValue());
   }
-  let group = v.GetGroup().GetName();
-  let text = "";
-  for key in keys {
-    text += (StrLen(text) > 0 ? " + " : "") + SettingsSelectorControllerKeyBinding.PrepareInputTag(key, group, v.GetName());
-  }
-  return text;
+  return ModKeybindsComboText(keys, v);
 }
 
 // "IK_Pad_LeftShoulder" -> "LB", "IK_F3" -> "F3", a combination as "LB + A".
@@ -107,19 +108,26 @@ private func ModKeybindsKeyText(key: CName) -> String {
 // device in view (controller buttons or keyboard keys): "[key icon]  two of its actions +how many more".
 @addMethod(SettingsMainGameController)
 private func ModKeybindsCheckConflicts() -> String {
-  ArrayClear(this.m_modKeybindsConflictNames);
-  ArrayClear(this.m_modKeybindsConflictLists);
   let vars = this.ModKeybindsKeyVars();
   let names: array<CName>;
   let keys: array<CName>;
   let groups: array<CName>;
   let atDefault: array<Bool>;
+  // The side panel asks on every entry pointed at: the same keys give the same answer.
+  let current = this.m_modKeybindsPadMode ? "P" : "K";
   for v in vars {
     ArrayPush(names, v.GetName());
     ArrayPush(keys, v.GetValue());
     ArrayPush(groups, v.GetGroupPath());
     ArrayPush(atDefault, Equals(v.GetValue(), v.GetDefaultValue()));
+    current += NameToString(v.GetValue()) + ";";
   }
+  if Equals(current, this.m_modKeybindsConflictKeys) {
+    return this.m_modKeybindsConflictLines;
+  }
+  this.m_modKeybindsConflictKeys = current;
+  ArrayClear(this.m_modKeybindsConflictNames);
+  ArrayClear(this.m_modKeybindsConflictLists);
   // Native results go into a variable first: used inline the call doesn't run.
   let lists = ModKeybindsMenu_Conflicts(names, keys, groups, atDefault);
   let sharedKeys: array<CName>;
@@ -174,6 +182,7 @@ private func ModKeybindsCheckConflicts() -> String {
     }
     i += 1;
   }
+  this.m_modKeybindsConflictLines = lines;
   return lines;
 }
 

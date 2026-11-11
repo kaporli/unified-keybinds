@@ -58,6 +58,7 @@ std::vector<Keybinds::Action> g_actions;
 std::map<std::string, std::string> g_loaded;    // key each action got at startup
 std::map<std::string, std::string> g_current;   // key each action has now
 bool g_holdAll = false;   // the (Hold) actions have their hold rule also while unshared, see HoldOnlyActions
+std::vector<Keybinds::HoldOnly> g_holdLive; // controller sharing as the buttons are now, see UpdateHoldOnly
 bool g_crouchTap = false; // Dynamic scheme: crouch's controller events follow its button, see UpdateCrouchTap
 std::map<std::string, std::string> g_announced; // combination changes the player was told about
 
@@ -273,9 +274,6 @@ bool GenerateMappings(LPCWSTR aMerged)
     return ok;
 }
 
-// Input Loader's merged contexts with the hold-only actions marked. Returns false to let the game
-// read the file as it is. The decisions also go to AcceptedEvents, which keeps the long press to the
-// device whose button is shared.
 // The Dynamic scheme crouches on a hold, so B can dodge on a tap. With crouch on a button of its own
 // that hold has no use: crouch then reacts to a tap, as on the other schemes.
 void UpdateCrouchTap()
@@ -309,15 +307,21 @@ void UpdateHoldOnly()
         actions = Keybinds::WithHoldOptions(g_actions);
         current = g_current;
     }
-    Busy busy;
-    for (const auto& h : Keybinds::HoldOnlyActions(actions, current, g_settings, true))
+    // No settings file: only the controller side is needed here, and it comes from the entries.
+    auto live = Keybinds::HoldOnlyActions(actions, current, {}, true);
+    for (const auto& h : live)
     {
         // Only actions set up at startup (one with accepted events of its own was left alone).
         if (std::any_of(g_rules.begin(), g_rules.end(), [&](const auto& r) { return r.action == h.action; }))
             AcceptedEvents::SetController(h.action, h.controller ? Keybinds::EventMode::Keep : Keybinds::EventMode::All);
     }
+    std::lock_guard lock(g_mutex);
+    g_holdLive = std::move(live);
 }
 
+// Input Loader's merged contexts with the hold-only actions marked. Returns false to let the game
+// read the file as it is. The decisions also go to AcceptedEvents, which keeps the long press to the
+// device whose button is shared.
 bool GenerateContexts(LPCWSTR aMerged)
 {
     static std::once_flag once;
@@ -749,6 +753,19 @@ void Native_HoldRules(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     aFrame->code++;
     if (!aOut)
         return;
+    Busy busy;
+    std::vector<Keybinds::HoldOnly> live;
+    {
+        std::lock_guard lock(g_mutex);
+        live = g_holdLive;
+    }
+    auto contexts = g_root / "r6" / "cache" / "inputContexts.xml";
+    auto join = [](const std::vector<std::string>& aList) {
+        std::string out;
+        for (const auto& a : aList)
+            out += (out.empty() ? "" : ",") + a;
+        return out.empty() ? std::string("-") : out;
+    };
     for (const auto& h : g_holdOnly)
     {
         for (const auto& r : g_rules)
@@ -756,14 +773,18 @@ void Native_HoldRules(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
             if (r.action != h.action)
                 continue;
             auto keep = [](Keybinds::EventMode m) { return m == Keybinds::EventMode::Keep ? "1" : "0"; };
-            auto join = [](const std::vector<std::string>& aList) {
-                std::string out;
-                for (const auto& a : aList)
-                    out += (out.empty() ? "" : ",") + a;
-                return out.empty() ? std::string("-") : out;
-            };
-            std::string line = h.action + "|" + keep(r.keyboard) + "|" + keep(r.controller) + "|" + join(r.keyboardShared) +
-                               "|" + join(r.controllerShared);
+            std::string controller = keep(r.controller);
+            auto controllerShared = r.controllerShared;
+            // The controller side follows the buttons during play.
+            auto now = std::find_if(live.begin(), live.end(), [&](const auto& l) { return l.action == h.action; });
+            if (g_holdAll && now != live.end())
+            {
+                controller = now->controller ? "1" : "0";
+                controllerShared = Keybinds::FedActions(contexts, now->padMappings);
+                std::erase(controllerShared, h.action);
+            }
+            std::string line = h.action + "|" + keep(r.keyboard) + "|" + controller + "|" + join(r.keyboardShared) + "|" +
+                               join(controllerShared);
             aOut->PushBack(RED4ext::CString(line.c_str()));
         }
     }
@@ -1227,9 +1248,9 @@ bool IsCombo(const Keybinds::Action& aAction, const std::string& aKey)
     return aKey.find('+') != std::string::npos || (aKey == aAction.defaultKey && !aAction.combo.empty());
 }
 
-// True when the keys the menu holds change a key combination compared to startup, or bind an entry
-// whose binding the game dropped (those only apply after a restart), and the player wasn't told
-// about these changes yet.
+// The entries whose change only applies after a restart: a key combination that differs from startup,
+// an entry whose binding the game dropped, a (Hold) entry whose sharing changed in a way set up at
+// startup. Empty when there are none or the player was already told about exactly these.
 void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
                           int64_t)
 {
@@ -1240,6 +1261,7 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
     aFrame->code++;
 
     Busy busy;
+    EnsureCollected();
     std::map<std::string, std::string> pending;
     {
         std::lock_guard lock(g_mutex);
@@ -1258,7 +1280,6 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
             }
             if (key == loaded->second)
                 continue;
-            // A controller entry without a default button has no row until it has a saved button.
             if (IsCombo(*action, key) || IsCombo(*action, loaded->second))
                 pending[name] = key;
         }
@@ -1292,18 +1313,31 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
             }
             return true;
         };
-        auto same = now.size() == g_holdOnly.size() &&
-                    std::equal(now.begin(), now.end(), g_holdOnly.begin(), [&](const auto& a, const auto& b) {
-                        return a.action == b.action && a.keyboard == b.keyboard && a.keyOptions == b.keyOptions && padSame(a, b);
-                    });
-        // The (Hold) entries whose sharing changed: keyboard entry for a key, controller entry for a button.
-        for (std::size_t i = 0; !same && i < now.size(); ++i)
+        // The (Hold) entries whose sharing changed since startup: the keyboard entry for a key, the
+        // controller entry for a button. Matched by action: either list can have entries the other lacks.
+        auto find = [](const std::vector<Keybinds::HoldOnly>& aList, const std::string& aAction) -> const Keybinds::HoldOnly* {
+            for (const auto& h : aList)
+            {
+                if (h.action == aAction)
+                    return &h;
+            }
+            return nullptr;
+        };
+        auto compare = [&](const Keybinds::HoldOnly& aNamed, const Keybinds::HoldOnly* aWas, const Keybinds::HoldOnly* aNow) {
+            Keybinds::HoldOnly none;
+            const auto& was = aWas ? *aWas : none;
+            const auto& is = aNow ? *aNow : none;
+            if (was.keyboard != is.keyboard || was.keyOptions != is.keyOptions)
+                pending[aNamed.option] = "shared";
+            if (!padSame(was, is))
+                pending[aNamed.padEntry] = "shared";
+        };
+        for (const auto& h : now)
+            compare(h, find(g_holdOnly, h.action), &h);
+        for (const auto& h : g_holdOnly)
         {
-            const auto* was = i < g_holdOnly.size() && g_holdOnly[i].action == now[i].action ? &g_holdOnly[i] : nullptr;
-            if (!was || was->keyboard != now[i].keyboard || was->keyOptions != now[i].keyOptions)
-                pending[now[i].option] = "shared";
-            if (!was || !padSame(*was, now[i]))
-                pending[now[i].padEntry] = "shared";
+            if (!find(now, h.action))
+                compare(h, &h, nullptr);
         }
     }
     bool notice = !pending.empty() && pending != g_announced;
@@ -1474,22 +1508,27 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_contexts = g_root / "r6" / "cache" / "modkeybinds" / "inputContexts.xml";
         std::error_code ec;
         fs::create_directories(g_generated.parent_path(), ec);
-        // A write the game made right before a crash may not have been split yet. It also holds the
-        // control scheme that session saved.
-        bool pending = fs::exists(g_settingsWrite, ec) && fs::exists(g_settings, ec) &&
-                       fs::last_write_time(g_settingsWrite, ec) > fs::last_write_time(g_settings, ec);
+        // A write the game made right before a crash may not have been split yet. Its controller keys
+        // belong to the scheme that session started with (the one in the settings file), so it is split
+        // under that scheme, and the scheme for this session is read afterwards.
+        auto scheme = [] {
+            return UserSettings::ListValue(g_settings, g_root / "r6" / "config" / "settings" / "options.json",
+                                           "/controls/controller", "InputSchemesMode");
+        };
         try
         {
-            g_scheme = UserSettings::ListValue(pending ? g_settingsWrite : g_settings,
-                                               g_root / "r6" / "config" / "settings" / "options.json",
-                                               "/controls/controller", "InputSchemesMode");
-            UserSettings::SetScheme(g_scheme);
-            if (pending)
-                SplitWrittenSettings();
+            bool pending = fs::exists(g_settingsWrite, ec) && fs::exists(g_settings, ec) &&
+                           fs::last_write_time(g_settingsWrite, ec) > fs::last_write_time(g_settings, ec);
+            UserSettings::SetScheme(scheme());
+            // One try: a write cut short by the crash can't be read, and the settings file stays as it is.
+            if (pending && !UserSettings::Split(g_settingsWrite, g_settings, g_store, Log))
+                Log("The settings write of the last session is incomplete, kept the settings file as it is");
             fs::remove(g_settingsWrite, ec);
 
             // Version 1.0.0 saved the mod sections in UserSettings.json: move them out.
             UserSettings::Split(g_settings, g_settings, g_store, Log);
+            g_scheme = scheme();
+            UserSettings::SetScheme(g_scheme);
         }
         catch (const std::exception& e)
         {
@@ -1561,7 +1600,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 8, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 8, 1);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

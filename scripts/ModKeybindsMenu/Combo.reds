@@ -182,6 +182,10 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
 
 @addMethod(SettingsMainGameController)
 private func ModKeybindsShowPopup(text: String) -> Void {
+  // One at a time: a new popup would replace the open one's token and close it.
+  if IsDefined(this.m_modKeybindsPopup) {
+    return;
+  }
   // The token has to be kept, or the popup closes at once.
   this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Unified Keybinds", text, GenericMessageNotificationType.OK);
   this.m_modKeybindsPopup.RegisterListener(this, n"OnModKeybindsPopupClosed");

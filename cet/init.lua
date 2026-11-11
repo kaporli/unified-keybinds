@@ -57,7 +57,12 @@ local function collect()
         if sub and sub.label then
             label = text(sub.label) .. ": " .. label
         end
-        local group = groupPrefix .. (slug(section) ~= "" and slug(section) or "Other")
+        -- As the plugin does: "Pad..." is taken by the game's controller sections.
+        local sectionSlug = slug(section) ~= "" and slug(section) or "Other"
+        if sectionSlug:sub(1, 3) == "Pad" then
+            sectionSlug = "Mod" .. sectionSlug
+        end
+        local group = groupPrefix .. sectionSlug
         entries[name] = { option = option, group = group }
         table.insert(list, { name = name, section = section, label = label, option = option })
     end

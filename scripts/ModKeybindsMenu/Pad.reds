@@ -167,9 +167,12 @@ private func PopulateCategorySettingsOptions(idx: Int32) -> Void {
   wrappedMethod(idx);
   this.m_data[i] = all;
   // Keys doing two things at once, listed when Key Bindings opens and they changed since the last time.
-  let conflicts = this.ModKeybindsConflictPopup();
-  if StrLen(conflicts) > 0 {
-    this.ModKeybindsShowPopup(conflicts);
+  // Not over an open popup: the list comes the next time.
+  if !IsDefined(this.m_modKeybindsPopup) {
+    let conflicts = this.ModKeybindsConflictPopup();
+    if StrLen(conflicts) > 0 {
+      this.ModKeybindsShowPopup(conflicts);
+    }
   }
 }
 

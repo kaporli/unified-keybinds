@@ -5,9 +5,10 @@ module ModKeybindsMenu
 // then slide. On that device the plugin keeps the button's events from Sprint (Toggle); a tap is the
 // (Hold) action let go before its hold completed, and toggles sprint here as the game's own tap does.
 //
-// Also: the game holds back a press on a button that has a hold for about 0.12 s, so a quick tap can
-// bring its press and release in the same frame. Sprint (Toggle) only checks its start while its button
-// reads pressed and missed those taps; they count as a tap too.
+// Also, on any layout: the game holds back a press on a button that has a hold for about 0.12 s, so a
+// quick tap brings its press and release in the same frame. Sprint (Toggle) only checks its start
+// while its button reads pressed and misses those taps (seen on the default L3: an 80 ms tap did
+// nothing, a 200 ms one sprinted); they count as a tap here.
 
 @addField(SprintDecisions)
 private let m_modKeybindsShared: array<CName>; // (Hold) actions sharing a button with Sprint (Toggle)
@@ -22,10 +23,10 @@ private let m_modKeybindsSharedPad: array<Bool>; // ...on the controller
 private let m_modKeybindsHeld: Bool; // the shared button's hold completed
 
 @addField(SprintDecisions)
-private let m_modKeybindsPressTime: Float;
+private let m_modKeybindsPressFrame: Uint64; // frame of Sprint (Toggle)'s last press
 
 @addField(SprintDecisions)
-private let m_modKeybindsTap: Bool;
+private let m_modKeybindsTapFrame: Uint64; // frame of the last tap, 0 once used
 
 @wrapMethod(SprintDecisions)
 protected func OnAttach(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Void {
@@ -60,6 +61,7 @@ protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsu
     result = wrappedMethod(action, consumer);
   }
   let game = GetGameInstance();
+  let frame = GameInstance.GetFrameNumber(game);
   if shared >= 0 {
     let defs = GetAllBlackboardDefs().InputSchemes;
     let pad = ModKeybindsPad.IsPadDevice(GameInstance.GetBlackboardSystem(game).Get(defs).GetUint(defs.Device));
@@ -69,7 +71,7 @@ protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsu
       } else {
         if ListenerAction.IsButtonJustReleased(action) {
           if !this.m_modKeybindsHeld {
-            this.m_modKeybindsTap = true;
+            this.m_modKeybindsTapFrame = frame;
             this.EnableOnEnterCondition(true);
           }
           this.m_modKeybindsHeld = false;
@@ -78,12 +80,11 @@ protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsu
     }
   }
   if Equals(name, n"ToggleSprint") {
-    let time = EngineTime.ToFloat(GameInstance.GetEngineTime(game));
     if ListenerAction.IsButtonJustPressed(action) {
-      this.m_modKeybindsPressTime = time;
+      this.m_modKeybindsPressFrame = frame;
     } else {
-      if ListenerAction.IsButtonJustReleased(action) && time == this.m_modKeybindsPressTime {
-        this.m_modKeybindsTap = true;
+      if ListenerAction.IsButtonJustReleased(action) && frame == this.m_modKeybindsPressFrame {
+        this.m_modKeybindsTapFrame = frame;
         this.EnableOnEnterCondition(true);
       }
     }
@@ -93,10 +94,14 @@ protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsu
 
 @wrapMethod(SprintDecisions)
 protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
-  if this.m_modKeybindsTap {
-    this.m_modKeybindsTap = false;
-    // What the game's own tap does (UpdateInputToggles); the checks below clear it when V can't sprint.
-    stateContext.SetConditionBoolParameter(n"SprintToggled", true, true);
+  if this.m_modKeybindsTapFrame > 0ul {
+    // A tap counts for the check right after it, not for one made much later (on a ladder, in the air).
+    let fresh = GameInstance.GetFrameNumber(scriptInterface.GetGame()) - this.m_modKeybindsTapFrame <= 2ul;
+    this.m_modKeybindsTapFrame = 0ul;
+    if fresh {
+      // What the game's own tap does (UpdateInputToggles); the checks below clear it when V can't sprint.
+      stateContext.SetConditionBoolParameter(n"SprintToggled", true, true);
+    }
   }
   return wrappedMethod(stateContext, scriptInterface);
 }

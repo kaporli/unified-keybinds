@@ -86,6 +86,9 @@ std::vector<HoldOnly> HoldOnlyActions(const std::vector<Action>& aActions,
 // aShareable: the (Hold) actions that may share (two of them on one button both start on a long press).
 std::set<std::string> HoldSensitiveMappings(const std::filesystem::path& aMerged, const std::set<std::string>& aShareable);
 
+// The actions that aMappings feed during play (aContexts: the merged input contexts).
+std::vector<std::string> FedActions(const std::filesystem::path& aContexts, const std::vector<std::string>& aMappings);
+
 // Actions of the (Hold) bindings whose key may be shared (holdShare entries), e.g. Sprint, Crouch.
 std::set<std::string> ShareableActions(const std::vector<Action>& aActions);
 

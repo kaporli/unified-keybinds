@@ -45,7 +45,7 @@ public static native func ModKeybindsMenu_WatchModifier() -> Void
 // The two keys pressed together while the entry waited ("IK_Q+IK_E"), or empty; ends the watch
 public static native func ModKeybindsMenu_KeyCombo() -> String
 
-// Entries that may share their key with another action: the (Hold) bindings, keyboard and controller
+// Entries that may share their key with another action, in pairs: the controller entry of a (Hold) binding, then the game's keyboard option of it
 public static native func ModKeybindsMenu_HoldShareNames() -> array<CName>
 
 // For each entry (its settings group path, at its default key), the names of the other entries on

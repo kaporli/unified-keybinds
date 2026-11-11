@@ -684,21 +684,8 @@ public abstract class ModKeybindsScheme {
     let i = 0;
     while i < ArraySize(names) {
       if Equals(names[i], entry) {
-        let v = settings.GetVar(groups[i], entry);
-        if !IsDefined(v) {
-          return "";
-        }
-        let size = v.GetDisplayNameKeysSize();
-        if size == 0 {
-          return GetLocalizedTextByKey(v.GetDisplayName());
-        }
-        let text = NameToString(v.GetDisplayName());
-        let k = 0;
-        while k < size {
-          text = StrReplace(text, "%", GetLocalizedTextByKey(v.GetDisplayNameKey(k)));
-          k += 1;
-        }
-        return text;
+        let v = settings.GetVar(groups[i], entry) as ConfigVarName;
+        return IsDefined(v) ? ModKeybindsEntryLabel(v, false) : "";
       }
       i += 1;
     }
@@ -740,12 +727,18 @@ protected cb func OnInitialize() -> Bool {
 @wrapMethod(HUDManager)
 protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
   let result = wrappedMethod(action, consumer);
-  if ListenerAction.IsButtonJustPressed(action) && Equals(ListenerAction.GetName(action), n"Ping") {
+  // Not during a hacking minigame (the game handles no input there), and only when the entries were
+  // made for the Alternative scheme (a scheme changed in this session keeps the old entries).
+  if ListenerAction.IsButtonJustPressed(action) && Equals(ListenerAction.GetName(action), n"Ping") && !this.IsHackingMinigameActive() {
     let game = this.GetGameInstance();
     let defs = GetAllBlackboardDefs().InputSchemes;
     let schemes = GameInstance.GetBlackboardSystem(game).Get(defs);
     if Equals(ConvertIntValueToInputScheme(schemes.GetUint(defs.Scheme)), InputScheme.ALTERNATIVE) && ModKeybindsPad.IsPadDevice(schemes.GetUint(defs.Device)) {
       // Native results go into a variable first: used inline as an argument the call doesn't run.
+      let entriesScheme = ModKeybindsMenu_PadScheme();
+      if NotEquals(entriesScheme, n"Alternative") {
+        return result;
+      }
       let names = ModKeybindsMenu_Names();
       let groups = ModKeybindsMenu_Groups();
       let settings = GameInstance.GetSettingsSystem(game);
