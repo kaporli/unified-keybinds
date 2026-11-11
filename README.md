@@ -13,30 +13,25 @@ Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and fold
 > [!WARNING]
 > - Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding.
 > - Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.
-> - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
-> - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
-> - Redscript Configuration Framework keys (the DigitalVixen mods, for example) appear from the second launch after you install the mod, and take a single key only.
 > - A new key combination, or going back to one, applies after a restart, and so does a shared keyboard key. A popup names the entries. Single keys and shared controller buttons apply right away, unless the other action on the button has a hold of its own or is Sprint (Toggle): then after a restart too.
 > - With both an action's key and its controller button unbound, the game drops one of the two until it restarts: binding that one again applies after a restart. A popup tells you.
 > - In game, press the second key of a combination within half a second of the first. The first key's own action then waits for its release, so holding it alone briefly acts like a tap.
 > - Controller combinations are recorded through XInput: Xbox controllers, and other controllers through Steam Input. A PlayStation controller on the game's own support may not record them (not tested).
 > - A key shared with a (Hold) action: the other action stops reacting to holding that key on that device (for example Call Vehicle on D-Pad Right when Crouch (Hold) is on it). A tap still works. On-screen prompts (talk, loot, pickpocket) keep their hold and come first.
 > - The tap or hold on a shared key relies on how game 2.5 keeps its input events. On another game version the plugin leaves that part out (the log says so) and the hold counts on keyboard and controller alike.
-> - A combination stays in this menu only: Mod Settings keeps its own single key.
 > - After you change the control scheme, the controller entries follow from the next launch (a popup says so).
 > - Each control scheme keeps its own rules: on Classic, Dodge/Dash is a double tap on any button. On Dynamic, Crouch is a hold on the dodge's button and a tap on a button of its own. On Alternative, the quick scan needs Scan (Hold) and Quick Melee on different buttons.
 > - The game crashes with more than about 30 key combinations in total (its own, other mods' and yours). Past that, an action keeps its key and the log says so.
-> - A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.
 
 ## Supported keybind sources
 
 | Where the mod keeps its keys | Supported | Notes |
 | --- | --- | --- |
-| Input Loader input file (`overridableUI`) | Yes | Most mods, for example Let There Be Flight |
+| Input Loader input file (`overridableUI`) | Yes | Most mods, for example Let There Be Flight. A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch |
 | Input Loader input file, single key or key combination without `overridableUI` | Yes | For example Enhanced Vehicle System |
-| Mod Settings key option | Yes | Kept in sync both ways |
+| Mod Settings key option | Yes | Kept in sync both ways. A key combination stays in this menu only: Mod Settings keeps its own single key |
 | Redscript Configuration Framework | Yes | Its own keys are in Input Loader files and Mod Settings. Its hub key (F8) is kept in sync with its Options |
-| Native Settings UI | Yes | From the second launch, single keys |
+| Native Settings UI | Yes | From the second launch after you install the mod, single keys (no combinations) |
 | Unified Mod Settings | Yes | Edits Native Settings UI and Mod Settings keys, which show up here |
 | Redscript Configuration Framework hub, for example the DigitalVixen mods | Yes | From the second launch, single keys and controller buttons, with the mod's own names. Kept in sync with the hub both ways |
 | Cyber Engine Tweaks hotkeys (`registerHotkey`, `registerInput`) | No | Stay in the CET overlay |
