@@ -96,7 +96,12 @@ protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   let pad = ArrayContains(padNames, v.GetName());
   let combo = ModKeybindsTakesCombo(v);
   let share = ArrayContains(sharing, v.GetName());
+  this.ModKeybindsCheckConflicts();
+  let conflict = this.ModKeybindsConflictLine(v.GetName());
   if !combo && !share {
+    if StrLen(conflict) > 0 {
+      inkTextRef.SetText(this.m_descriptionText, inkTextRef.GetText(this.m_descriptionText) + "\n\n" + conflict);
+    }
     return result;
   }
   // In place of the game's "Bind.", laid out like its own panels: the description, the confirmation
@@ -112,9 +117,15 @@ protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   if Equals(item.GetVarUpdatePolicy(), ConfigVarUpdatePolicy.ConfirmationRequired) {
     text += "\n\n" + GetLocalizedText("LocKey#76947");
   }
-  let restart = combo && share ? "Combinations and shared " + thing + "s apply after a restart."
-    : (combo ? "Combinations apply after a restart." : "Shared " + thing + "s apply after a restart.");
-  text += "\n\n<Rich " + this.m_descriptionWarningRichColor + ">" + restart + "</>";
+  // A shared controller button counts at once; a shared keyboard key after a restart.
+  let restart = combo && share && !pad ? "Combinations and shared keys apply after a restart."
+    : (combo ? "Combinations apply after a restart." : (pad ? "" : "Shared keys apply after a restart."));
+  if StrLen(restart) > 0 {
+    text += "\n\n<Rich " + this.m_descriptionWarningRichColor + ">" + restart + "</>";
+  }
+  if StrLen(conflict) > 0 {
+    text += "\n\n" + conflict;
+  }
   inkTextRef.SetText(this.m_descriptionText, text);
   return result;
 }
@@ -139,9 +150,33 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
     ArrayPush(keys, IsDefined(v) ? v.GetValue() : n"None");
     i += 1;
   }
-  let notice = ModKeybindsMenu_RestartNotice(names, keys);
-  if notice {
-    this.ModKeybindsShowPopup("New key combinations, shared keys of (Hold) actions, and keys the game dropped while unbound apply after you restart the game. Other keys apply right away.");
+  // The entries that only change once the game restarts, by name.
+  let pending = ModKeybindsMenu_RestartNotice(names, keys);
+  let text = "";
+  let listed = 0;
+  for name in pending {
+    let at = ArrayFindFirst(names, name);
+    // The keyboard entry of a (Hold) action is one of the game, outside the mod sections.
+    let entry = at >= 0 ? this.m_settings.GetVar(groups[at], name) as ConfigVarName : this.ModKeybindsKeyVar(name);
+    if IsDefined(entry) {
+      if listed < 5 {
+        text += "\n" + ModKeybindsEntryLabel(entry, false);
+      }
+      listed += 1;
+    }
+  }
+  if listed > 5 {
+    text += "\n~+" + IntToString(listed - 5) + " more";
+  }
+  if listed > 0 {
+    text = "Restart the game to apply:" + text;
+  }
+  // One message at a time: the conflicts come when Key Bindings opens next, and stay in the side panel.
+  if StrLen(text) == 0 && !IsDefined(this.m_modKeybindsPopup) {
+    text = this.ModKeybindsConflictPopup();
+  }
+  if StrLen(text) > 0 {
+    this.ModKeybindsShowPopup(text);
   }
 }
 

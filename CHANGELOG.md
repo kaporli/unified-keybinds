@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.0 (2026-11-11)
+
+- Conflict warning: when two actions that react at the same time share a key or button, a popup lists the keys and the side panel of each entry names what shares it, in red. The game only checks its own keyboard keys.
+- A shared controller button counts at once: bind Sprint (Hold), Crouch (Hold) or Scan (Toggle) next to another action and tap/hold works without a restart. Before, it needed a full game restart (reloading a save was not enough), which looked like it worked only sometimes. Shared keyboard keys and combinations still apply after a restart, and the popup now names the entries that need it.
+- A prompt on screen comes first: while the game shows an interaction on a shared key (talk, loot, pick up), holding the key does the interaction and the (Hold) action waits.
+- Sprint (Toggle) can share a button with a (Hold) action: tap sprints, hold does the other.
+- Optional file: controller keys are kept per control scheme (Classic, Dynamic, Alternative), so a layout made on one scheme no longer changes another. The scheme selector marks an edited scheme with a star.
+- Optional file: Scan (Toggle) gets a controller entry, unbound by default. With Scan (Hold) on the same button, tap is a quick scan and hold switches scanning on or off, on every scheme.
+- Optional file: on Classic, Dodge/Dash moved to another button dodges again (double tap, as the scheme defines it). Before, it never dodged.
+- Optional file: on Dynamic, Crouch (Toggle) on a button of its own toggles on a tap. On the dodge's button it stays a hold, as in the game.
+- Optional file: the Control Scheme screen also shows Sprint (Hold), Crouch (Hold) and Scan (Toggle) once they have a button, with the hold icon on a shared one.
+- Safer storage: files are written through a temporary file, the previous keys are kept as `keys.json.bak`, and a damaged `keys.json` is set aside as `keys.json.bad` instead of being replaced by an empty one.
+- Faster: less work on every file the game opens and closes, and the conflict check reads the input contexts once.
+
 ## 1.7.0 (2026-11-10)
 
 - Controller combinations: on a controller entry, hold one button and press another, for example LB + A. A button pressed on its own is bound alone. Trigger entries take a single trigger.

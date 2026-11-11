@@ -11,12 +11,12 @@ Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and fold
 ## Limitations
 
 > [!WARNING]
-> - Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding. The game gives no warning when two actions share a controller button, and one of them may stop working.
+> - Controller: vanilla actions are listed only with the optional file Vanilla Controller Rebinding.
 > - Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes use several buttons and stay as they are.
 > - Cyber Engine Tweaks hotkeys are not supported. They stay in the CET overlay.
 > - Native Settings UI keys appear from the second launch after you install the mod, and take a single key only (no combinations).
 > - Redscript Configuration Framework keys (the DigitalVixen mods, for example) appear from the second launch after you install the mod, and take a single key only.
-> - A new key combination, or going back to one, applies after a restart, and so does a shared key. A popup tells you. Single keys apply right away.
+> - A new key combination, or going back to one, applies after a restart, and so does a shared keyboard key. A popup names the entries. Single keys and shared controller buttons apply right away.
 > - With both an action's key and its controller button unbound, the game drops one of the two until it restarts: binding that one again applies after a restart. A popup tells you.
 > - In game, press the second key of a combination within half a second of the first. The first key's own action then waits for its release, so holding it alone briefly acts like a tap.
 > - Controller combinations are recorded through XInput: Xbox controllers, and other controllers through Steam Input. A PlayStation controller on the game's own support may not record them (not tested).
@@ -70,14 +70,21 @@ With the optional file, the Control Scheme screen shows your bindings. Defaults,
   ![Swap Firemode on Q + E and Jump on LB + A, with their side panels](screenshots/combination.png)
 
   ![The waiting prompt, keyboard and controller](screenshots/prompt.png)
-- A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. Applies after a restart.
+- A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. A shared controller button works as soon as you bind it; a shared keyboard key after a restart. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
 
   ![Crouch (Hold) and Dodge/Dash on Mouse 4, Sprint (Hold) and Dodge on B, with their side panels](screenshots/shared-key.png)
+
+- Conflict warning: when two actions that react at the same time share a key or button, a popup lists the keys, and each entry's side panel names what shares it.
+
+  ![The conflict popup, and an entry's side panel naming what shares its key](screenshots/conflict.png)
 
 - A changed key applies right away, also for mods without a Mod Settings option.
 - Unbind any entry, vanilla or mod, keyboard or controller: point at it and press X (Square on a controller), shown in the hints. It stays unbound across save loads, new games and restarts; Defaults brings the key back. [Allow Unbound Actions](https://www.nexusmods.com/cyberpunk2077/mods/11429) is no longer needed, and still works alongside.
 - Controller rebinding, which the game doesn't offer: use a controller in Key Bindings and the menu switches to controller buttons for mod actions. It switches back when you use the keyboard. A controller entry takes only controller buttons of its kind (trigger or button) and a keyboard entry only keys.
-- Optional file Vanilla Controller Rebinding: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). The Control Scheme screen draws your bindings. Sprint (Hold) and Crouch (Hold) get controller entries too, unbound by default, like the keyboard has.
+- Optional file Vanilla Controller Rebinding: vanilla actions too, with the game's own section names and labels, following the control scheme in use (Classic, Dynamic, Alternative). Each scheme keeps its own layout. The Control Scheme screen draws your bindings. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get controller entries too, unbound by default, like the keyboard has (with Scan (Hold) and Scan (Toggle) on one button, tap is a quick scan and hold switches scanning on or off).
+
+  ![Control Scheme rows for Crouch (Hold) on L3 and Scan (Toggle) on B](screenshots/control-scheme-shared.png)
+
 - Keys stay in sync with Mod Settings: if a mod also has its key in Mod Settings, changing it in either menu changes both.
 - Also lists the keys that Cyber Engine Tweaks mods add through Native Settings UI (for example Kiroshi Optics Night Vision or Much Better Netrunning). A key changed in either menu changes both, and the mod uses it right away.
 - Also lists the keys of mods that keep them in Redscript Configuration Framework (for example DigitalVixen's Shattered Chrome, Chrome Plating or Injuries), with the mod's own names. A key changed here or in RCF's hub changes both.
@@ -151,6 +158,13 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 - Controller entries: the game's key binding entries take keyboard keys only. For every action (vanilla or mod) whose mappings hold exactly one controller button without `overridableUI`, the plugin adds an entry named `MKPad_<action>` and gives that button the name as `overridableUI` in the copy of the mappings the game reads. Vanilla ones are added only while the optional `VanillaController.reds` is installed, in sections named after the game's, with its labels. Their buttons come from the mapping's copy for the control scheme in use (`<mapping>_Legacy`, `_Agile`, `_Alternative`) where the game has one, and buttons used only in menu contexts are left out. `VanillaController.reds` also moves the rows on the Control Scheme screen to the buttons they are bound to. The scripts show controller entries while the last device used is a controller (the game's `InputSchemes.Device` blackboard) and the keyboard entries otherwise, and rebuild the list when the device changes. The ApplyOverrides hook sets controller buttons only for controller entries.
 - Unbinding sets an entry to `IK_None`, the game's value for an action without a key, which the plugin keeps in `keys.json` as the player's choice. An entry with no stored key was never set and gets the mod's key. The game won't keep the menu's changes while an action has no key (`IsBlockedByActionWithoutAssignedKey`); the scripts wrap that method rather than replace it, so Allow Unbound Actions, which replaces it, still compiles alongside. The Unbind key is the game's `controller_settings` action (X, Square), which does nothing on the Key Bindings tab.
 - Defaults resets an entry to the key the game knows for it, which it only knows for its own actions, so the scripts set mod entries to the mod's key.
+- Shared controller buttons apply during play: every (Hold) action that may share gets its hold rule when the game starts (taking every event while unshared), and the plugin switches the controller side of the rule when a button changes. A controller entry without a default button has a row with a key no device sends, so a button bound later works at once. Shared keyboard keys are written into the mappings copy and apply after a restart.
+- Conflicts: two entries on one key count when their actions are in one gameplay context (or one of them is read by the mod itself), at least one is a mod's entry or both are game controller entries, and they are not a (Hold) entry sharing by design. The popup shows the device in view.
+- Game controller keys are stored per control scheme (`_schemes` in `keys.json`).
+- Classic scheme: the game counts the dodge's double tap itself and misses it on a button that also has a hold (the press is held back and arrives with the release). The plugin adds a plain action on the dodge's button and the scripts count two presses within 0.4 s.
+- Dynamic scheme: the game makes Crouch (Toggle) a hold on the controller so B can dodge on a tap. With crouch on another button than the dodge, the plugin sets it to react to a tap.
+- Scan (Hold) and Scan (Toggle) on one button: tap is a quick scan, hold toggles. On Alternative the game has no quick scan (the button is also Quick Melee); with the two on different buttons the optional file adds it.
+- Files are written through a temporary file and moved into place. `keys.json.bak` is the version before the last save; a `keys.json` that can't be read is copied to `keys.json.bad`.
 - What was found is written to `red4ext/logs/modkeybindsmenu-*.log`.
 
 ## Building

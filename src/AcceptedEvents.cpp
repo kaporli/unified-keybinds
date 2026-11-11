@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <mutex>
 
 namespace
@@ -54,6 +55,7 @@ std::vector<Rule> g_rules;
 std::vector<Object> g_objects; // newest runtime object of each listed action
 std::vector<std::string> g_changed;
 bool g_pad = false; // the device in use is a controller
+std::vector<uint64_t> g_blocked; // hold-only actions giving way to a prompt
 
 EventList* List(uint8_t* aObject, int aList)
 {
@@ -62,14 +64,15 @@ EventList* List(uint8_t* aObject, int aList)
 
 // Memory that can be read, checked before reading through a pointer of an unknown layout. Not a
 // structured exception handler: a crash reporter can end the game on the first fault.
-bool Readable(const void* aAt, size_t aSize)
+bool Readable(const void* aAt, size_t aSize, bool aWritable = false)
 {
     auto at = reinterpret_cast<uintptr_t>(aAt);
     if (at < 0x10000 || at + aSize >= 0x800000000000ull)
         return false;
     MEMORY_BASIC_INFORMATION mbi{};
     if (VirtualQuery(aAt, &mbi, sizeof(mbi)) != sizeof(mbi) || mbi.State != MEM_COMMIT || (mbi.Protect & PAGE_GUARD) ||
-        !(mbi.Protect & (PAGE_READWRITE | PAGE_READONLY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+        !(mbi.Protect & (aWritable ? PAGE_READWRITE | PAGE_EXECUTE_READWRITE
+                                   : PAGE_READWRITE | PAGE_READONLY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
         return false;
     return at + aSize <= reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
 }
@@ -79,13 +82,14 @@ bool Readable(const void* aAt, size_t aSize)
 // another layout (another game version): the object is left alone.
 bool Plausible(uint8_t* aObject, uint32_t aSize, bool aFirst)
 {
-    if (aSize == 0 || aSize > 16 || !Readable(aObject + kLists, 3 * kListStride))
+    // Writable: the lists are written after this check.
+    if (aSize == 0 || aSize > 16 || !Readable(aObject + kLists, 3 * kListStride, true))
         return false;
     EventList* lists[] = {List(aObject, kInUseList), List(aObject, kKeyboardList), List(aObject, kControllerList)};
     for (auto list : lists)
     {
         if (list->capacity < aSize || list->capacity > 32 || list->size > list->capacity ||
-            (aFirst && list->size != aSize) || !Readable(list->entries, list->capacity * sizeof(int32_t)))
+            (aFirst && list->size != aSize) || !Readable(list->entries, list->capacity * sizeof(int32_t), true))
             return false;
     }
     if (lists[0]->entries == lists[1]->entries || lists[0]->entries == lists[2]->entries ||
@@ -114,6 +118,12 @@ std::vector<int32_t> Content(const std::vector<int32_t>& aLoaded, Keybinds::Even
     std::vector<int32_t> out;
     if (aMode == Keybinds::EventMode::All)
         return out; // an empty list takes every event
+    if (aMode == Keybinds::EventMode::None)
+        return {14}; // pattern hold passed: never sent for a plain button
+    if (aMode == Keybinds::EventMode::Tap)
+        return {0, 1}; // button pressed, released
+    if (aMode == Keybinds::EventMode::Hold)
+        return {3}; // button hold complete
     for (auto id : aLoaded)
     {
         if (aMode == Keybinds::EventMode::Keep || !IsHold(id))
@@ -136,9 +146,17 @@ void Apply(Object& aObject, const Keybinds::EventRule& aRule)
         return;
     auto keyboard = Content(aObject.loaded, aRule.keyboard);
     auto pad = Content(aObject.loaded, aRule.controller);
+    for (int list : {kInUseList, kKeyboardList, kControllerList})
+    {
+        if (List(aObject.object, list)->capacity < std::max(keyboard.size(), pad.size()))
+            return;
+    }
     Write(List(aObject.object, kKeyboardList), keyboard);
     Write(List(aObject.object, kControllerList), pad);
-    Write(List(aObject.object, kInUseList), g_pad ? pad : keyboard);
+    auto inUse = g_pad ? pad : keyboard;
+    if (std::find(g_blocked.begin(), g_blocked.end(), aObject.hash) != g_blocked.end())
+        inUse = Content(inUse, Keybinds::EventMode::NoHold);
+    Write(List(aObject.object, kInUseList), inUse);
 }
 
 const Keybinds::EventRule* Find(uint64_t aAction)
@@ -158,6 +176,9 @@ const char* ModeName(Keybinds::EventMode aMode)
     case Keybinds::EventMode::Keep: return "as set";
     case Keybinds::EventMode::All: return "every event";
     case Keybinds::EventMode::NoHold: return "no hold";
+    case Keybinds::EventMode::None: return "no event";
+    case Keybinds::EventMode::Tap: return "tap";
+    case Keybinds::EventMode::Hold: return "hold";
     }
     return "";
 }
@@ -264,6 +285,11 @@ bool AcceptedEvents::Attach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHan
     return true;
 }
 
+bool AcceptedEvents::Active()
+{
+    return g_registerOriginal && g_initOriginal;
+}
+
 void AcceptedEvents::Detach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandle)
 {
     if (g_registerOriginal)
@@ -280,10 +306,43 @@ void AcceptedEvents::Set(const std::vector<Keybinds::EventRule>& aRules)
         g_rules.push_back({RED4ext::CName(r.action.c_str()).hash, r});
 }
 
+void AcceptedEvents::SetController(const std::string& aAction, Keybinds::EventMode aMode)
+{
+    auto hash = RED4ext::CName(aAction.c_str()).hash;
+    std::lock_guard lock(g_mutex);
+    for (auto& r : g_rules)
+    {
+        if (r.hash != hash || r.rule.controller == aMode)
+            continue;
+        r.rule.controller = aMode;
+        for (auto& o : g_objects)
+        {
+            if (o.hash == hash)
+                Apply(o, r.rule);
+        }
+    }
+}
+
 void AcceptedEvents::SetDevice(bool aPad)
 {
     std::lock_guard lock(g_mutex);
     g_pad = aPad;
+    for (auto& o : g_objects)
+    {
+        if (auto rule = Find(o.hash))
+            Apply(o, *rule);
+    }
+}
+
+void AcceptedEvents::SetBlocked(const std::vector<std::string>& aActions)
+{
+    std::lock_guard lock(g_mutex);
+    std::vector<uint64_t> blocked;
+    for (const auto& a : aActions)
+        blocked.push_back(RED4ext::CName(a.c_str()).hash);
+    if (blocked == g_blocked)
+        return;
+    g_blocked = std::move(blocked);
     for (auto& o : g_objects)
     {
         if (auto rule = Find(o.hash))

@@ -12,13 +12,17 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Record your own: [b]hold one key and press another[/b] ([i]"Ctrl + K"[/i], [i]"Q + E"[/i]), or on a controller [b]hold one button and press another[/b] ([i]"LB + A"[/i]). A key pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/combination.png[/img]
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/prompt.png[/img][/*]
-[*][b]Tap or hold on one key[/b]: a (Hold) action can share its key with another action. Tap for the other action, hold for this one, for example [b]Sprint (Hold) and Dodge on B[/b], or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant.
+[*][b]Tap or hold on one key[/b]: a (Hold) action can share its key with another action. Tap for the other action, hold for this one, for example [b]Sprint (Hold) and Dodge on B[/b], or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. On a controller it works as soon as you bind it. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/shared-key.png[/img][/*]
-[*][b]Controller rebinding[/b], which the game doesn't offer: with a controller in use, the menu shows controller buttons for mod actions, and switches back when you use the keyboard.[/*]
+[*][b]Conflict warning[/b]: when two actions that react at the same time share a key or button, a popup lists the keys, and each entry's side panel names what shares it.
+[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/conflict.png[/img][/*]
 [*][b]Unbinding[/b], which the game doesn't offer: point at any entry and press [b]X[/b] (Square on a controller). It stays unbound across save loads and restarts, and [b]Defaults[/b] brings the key back. [url=https://www.nexusmods.com/cyberpunk2077/mods/11429]Allow Unbound Actions[/url] is no longer needed, and still works alongside.[/*]
-[*]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla controller buttons too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). The [b]Control Scheme[/b] screen shows your bindings. Sprint (Hold) and Crouch (Hold) get controller entries too.[/*]
+[*][b]Controller rebinding[/b], which the game doesn't offer: with a controller in use, the menu shows controller buttons for mod actions, and switches back when you use the keyboard.[/*]
+[*]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla controller buttons too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). Each scheme keeps its own layout. The [b]Control Scheme[/b] screen shows your bindings. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get controller entries too: for example [b]Crouch (Hold) on L3[/b] next to Sprint, or [b]Scan (Toggle) on B[/b] next to Dodge. With Scan (Hold) and Scan (Toggle) on one button, tap is a quick scan and hold switches scanning on or off. Works on all three schemes.
+[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/control-scheme-shared.png[/img][/*]
 [*]Never changes game or mod files, so mods that edit the settings menu keep working.[/*]
-[/list][size=4][b]Supported keybind sources[/b][/size]
+[/list]
+[size=4][b]Supported keybind sources[/b][/size]
 
 [table][tr][th]Status[/th]
 [th]Keybind source[/th]
@@ -56,25 +60,28 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] hotkeys ([font=Courier New]registerHotkey[/font], [font=Courier New]registerInput[/font])[/td]
 [td]I'm still exploring a way to integrate these seamlessly.[/td]
 [/tr]
-[/table][size=4][b][color=#e5be37]Limitations[/color][/b][/size]
+[/table]
+[size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
 [*][color=#e5be37][b]Controller: an action is listed when exactly one button triggers it. Movement, aiming, attacking and stick axes stay as they are.[/b][/color][/*]
-[*][color=#e5be37][b]Controller: the game gives no warning when two actions share a button, and one of them may stop working.[/b][/color][/*]
-[*][color=#e5be37][b]A new key combination or shared key applies after a restart (a popup tells you), and so does rebinding an action whose key and controller button were both unbound. Press the second key within half a second of the first. The game crashes with more than about 30 combinations in total, so past that an action keeps its key.[/b][/color]
+[*][color=#e5be37][b]A new key combination or shared keyboard key applies after a restart (a popup names the entries), and so does rebinding an action whose key and controller button were both unbound. Press the second key within half a second of the first. The game crashes with more than about 30 combinations in total, so past that an action keeps its key.[/b][/color]
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/restart-popup.png[/img][/*]
 [*][color=#e5be37][b]Controller combinations are recorded through XInput (Xbox controllers, others through Steam Input). A PlayStation controller on the game's own support may not record them.[/b][/color][/*]
 [*][color=#e5be37][b]An action sharing a key with a (Hold) action stops reacting to holding that key on that device. A tap still works.[/b][/color][/*]
 [*][color=#e5be37][b]A mod that registers its input file late through [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url]'s plugin interface may only appear from the second launch.[/b][/color][/*]
-[/list][size=4][b]Requirements[/b][/size]
+[/list]
+[size=4][b]Requirements[/b][/size]
 [list]
 [*]Cyberpunk 2077 [b]2.5[/b][/*]
 [*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/1511]redscript[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url][/*]
 [*]Optional, for the keys kept there: [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] with [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url][/*]
-[/list][size=4][b]Installation[/b][/size]
+[/list]
+[size=4][b]Installation[/b][/size]
 Install with Mod Organizer 2 or Vortex, or extract into the game folder. The optional file goes on top of the main file. The files go to:
 [code]red4ext/plugins/ModKeybindsMenu/
 bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
-red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds (optional file)[/code][size=4][b]Uninstallation[/b][/size]
+red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds (optional file)[/code]
+[size=4][b]Uninstallation[/b][/size]
 Remove both [font=Courier New]ModKeybindsMenu[/font] folders. Optionally delete [font=Courier New]r6/cache/modkeybinds/[/font], where the mod keys are kept. Nothing is written to your save. On 1.0.0, [b]start the game once with a newer version before uninstalling[/b], so your settings file gets cleaned up.
 
 [size=4][b]For mod authors[/b][/size]
@@ -84,7 +91,8 @@ For nicer names, ship [font=Courier New]r6/config/modkeybinds/<YourMod>.json[/fo
 [code]{
 "_section": "Your Mod",
 "yourActionName": "Open Menu"
-}[/code][font=Courier New]_section[/font] names the section for every action in that file. Names can also be [font=Courier New]LocKey#...[/font] keys.
+}[/code]
+[font=Courier New]_section[/font] names the section for every action in that file. Names can also be [font=Courier New]LocKey#...[/font] keys.
 
 [size=4][b]Source[/b][/size]
 [url=https://github.com/kaporli/unified-keybinds]github.com/kaporli/unified-keybinds[/url] (MIT)

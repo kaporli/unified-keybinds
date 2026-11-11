@@ -166,6 +166,11 @@ private func PopulateCategorySettingsOptions(idx: Int32) -> Void {
   this.m_data[i] = ModKeybindsPad.Filter(all, padNames, this.m_modKeybindsPadMode);
   wrappedMethod(idx);
   this.m_data[i] = all;
+  // Keys doing two things at once, listed when Key Bindings opens and they changed since the last time.
+  let conflicts = this.ModKeybindsConflictPopup();
+  if StrLen(conflicts) > 0 {
+    this.ModKeybindsShowPopup(conflicts);
+  }
 }
 
 // The game's entries end their wait on any key; an entry of the other kind keeps waiting. A
@@ -190,4 +195,19 @@ protected cb func OnKeyBindingEvent(e: ref<KeyBindingEvent>) -> Bool {
     }
   }
   return wrappedMethod(e);
+}
+
+// Each control scheme keeps its own controller bindings. One that differs from its defaults is shown
+// with a mark, e.g. "Dynamic*" (Controls and the Control Scheme screen).
+@wrapMethod(SettingsSelectorControllerListString)
+public func Refresh() -> Void {
+  wrappedMethod();
+  let value = this.m_SettingsEntry as ConfigVarListString;
+  if IsDefined(value) && Equals(value.GetName(), n"InputSchemesMode") {
+    // Native results go into a variable first: used inline the call doesn't run.
+    let edited = ModKeybindsMenu_SchemeEdited(value.GetValue());
+    if edited {
+      inkTextRef.SetText(this.m_ValueText, inkTextRef.GetText(this.m_ValueText) + "*");
+    }
+  }
 }

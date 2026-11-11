@@ -1,5 +1,7 @@
 #include "NativeSettings.hpp"
 
+#include "UserSettings.hpp"
+
 #include <fstream>
 #include <sstream>
 
@@ -40,12 +42,16 @@ std::vector<Keybinds::Action> NativeSettings::Read(const fs::path& aRoot)
     {
         if (!e.is_object())
             continue;
+        auto text = [&](const char* aKey) {
+            auto it = e.find(aKey);
+            return it != e.end() && it->is_string() ? it->get<std::string>() : std::string();
+        };
         Keybinds::Action a;
-        a.name = e.value("name", "");
-        a.section = e.value("section", "");
-        a.label = e.value("label", "");
-        a.defaultKey = e.value("default", "");
-        a.current = e.value("key", "");
+        a.name = text("name");
+        a.section = text("section");
+        a.label = text("label");
+        a.defaultKey = text("default");
+        a.current = text("key");
         if (a.name.rfind(kNamePrefix, 0) != 0 || a.section.empty() || a.label.empty())
             continue;
         if (a.defaultKey.empty())
@@ -64,10 +70,5 @@ bool NativeSettings::Write(const fs::path& aRoot, const std::vector<Entry>& aEnt
             {{"name", e.name}, {"section", e.section}, {"label", e.label}, {"key", e.key}, {"default", e.defaultKey}});
     }
     auto path = CachePath(aRoot);
-    std::error_code ec;
-    fs::create_directories(path.parent_path(), ec);
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    out << data.dump(4);
-    out.close();
-    return static_cast<bool>(out);
+    return UserSettings::WriteFile(path, data.dump(4));
 }

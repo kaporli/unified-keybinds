@@ -5,7 +5,8 @@ module ModKeybindsMenu
 //
 // Settings > Controls > Control Scheme draws a controller with what each button does. The drawing
 // follows the controller bindings from Key Bindings: a row whose button was changed moves to that
-// button's place and shows its icon. Rows are listed per tab as
+// button's place and shows its icon. An entry without a row (Sprint (Hold), Crouch (Hold),
+// Scan (Toggle)) gets one once it has a button. Rows are listed per tab as
 // "path|controller entry|default button|hold|entry of the texts after a /": the path from the
 // screen's root; no entry for rows that can't be rebound. Only the scheme the controller entries
 // were made for (the one in use at startup) is redrawn.
@@ -511,6 +512,57 @@ public abstract class ModKeybindsScheme {
       }
     }
 
+    // Entries the drawing has no row for (Sprint (Hold), Crouch (Hold), Scan (Toggle): no button by
+    // default) get one at their button, on the on-foot tab. A hold when another row has the button:
+    // they share it as tap and hold.
+    let shared = ModKeybindsMenu_HoldShareNames();
+    let inputTab = ModKeybindsScheme.Child(root, "Input") as inkCompoundWidget;
+    let look = ArraySize(rows) > 0 ? ModKeybindsScheme.FirstText(rows[0].widget) as inkText : null;
+    let j = 0;
+    while j < ArraySize(shared) && IsDefined(inputTab) && IsDefined(look) {
+      let entry = shared[j];
+      // Pairs: the controller entry, then the game's keyboard option.
+      j += 2;
+      let current = ModKeybindsScheme.Value(settings, names, groups, entry, n"IK_None");
+      if !ModKeybindsScheme.HasEntry(rows, entry) && IsNameValid(current) && NotEquals(current, n"IK_None") {
+        let hold = false;
+        for other in rows {
+          if Equals(other.current, current) && !other.hold && Equals(ModKeybindsScheme.Tab(other.widget), inputTab) {
+            hold = true;
+          }
+        }
+        let schemeCanvas = ModKeybindsScheme.Child(inputTab, scheme + "Scheme") as inkCompoundWidget;
+        let to = ModKeybindsScheme.Group(inputTab, schemeCanvas, current, hold, playStation);
+        if IsDefined(to) && IsDefined(to as inkVerticalPanel) {
+          let panel = new inkHorizontalPanel();
+          panel.SetName(n"modKeybindsShared");
+          if to.GetNumChildren() > 0 {
+            panel.SetHAlign(to.GetWidgetByIndex(0).GetHAlign());
+          }
+          panel.Reparent(to, -1);
+          let text = new inkText();
+          text.SetName(n"modKeybindsText");
+          text.SetFontFamily("base\\gameplay\\gui\\fonts\\raj\\raj.inkfontfamily", look.GetFontStyle());
+          text.SetFontSize(look.GetFontSize());
+          text.SetTintColor(look.GetTintColor());
+          text.SetVAlign(look.GetVAlign());
+          text.SetText(ModKeybindsScheme.Label(settings, names, groups, entry));
+          text.Reparent(panel, -1);
+          let added = new ModKeybindsSchemeRow();
+          added.widget = panel;
+          added.entry = entry;
+          added.button = n"IK_None";
+          added.current = current;
+          added.hold = hold;
+          added.moved = true;
+          ArrayPush(rows, added);
+          if !ModKeybindsScheme.Contains(touched, to) {
+            ArrayPush(touched, to);
+          }
+        }
+      }
+    }
+
     // In each panel that changed, a row gets an icon when the row above is another button.
     for group in touched {
       let left = ModKeybindsScheme.IsLeft(group);
@@ -618,6 +670,41 @@ public abstract class ModKeybindsScheme {
     return button;
   }
 
+  public static func HasEntry(rows: array<ref<ModKeybindsSchemeRow>>, entry: CName) -> Bool {
+    for row in rows {
+      if Equals(row.entry, entry) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // An entry's text as Key Bindings shows it.
+  public static func Label(settings: ref<UserSettings>, names: array<CName>, groups: array<CName>, entry: CName) -> String {
+    let i = 0;
+    while i < ArraySize(names) {
+      if Equals(names[i], entry) {
+        let v = settings.GetVar(groups[i], entry);
+        if !IsDefined(v) {
+          return "";
+        }
+        let size = v.GetDisplayNameKeysSize();
+        if size == 0 {
+          return GetLocalizedTextByKey(v.GetDisplayName());
+        }
+        let text = NameToString(v.GetDisplayName());
+        let k = 0;
+        while k < size {
+          text = StrReplace(text, "%", GetLocalizedTextByKey(v.GetDisplayNameKey(k)));
+          k += 1;
+        }
+        return text;
+      }
+      i += 1;
+    }
+    return "";
+  }
+
   // The tab canvas (Input, Vehicles, VehicleCombat) a row is in.
   public static func Tab(widget: wref<inkWidget>) -> wref<inkCompoundWidget> {
     let w = widget;
@@ -645,5 +732,29 @@ public abstract class ModKeybindsScheme {
 protected cb func OnInitialize() -> Bool {
   let result = wrappedMethod();
   ModKeybindsScheme.Apply(this.GetRootCompoundWidget(), this.m_settings);
+  return result;
+}
+
+// Quick scan: a tap of the Scan (Hold) button. The game leaves it out on the Alternative scheme,
+// where that button is also Quick Melee. With the two on different buttons the tap scans there too.
+@wrapMethod(HUDManager)
+protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
+  let result = wrappedMethod(action, consumer);
+  if ListenerAction.IsButtonJustPressed(action) && Equals(ListenerAction.GetName(action), n"Ping") {
+    let game = this.GetGameInstance();
+    let defs = GetAllBlackboardDefs().InputSchemes;
+    let schemes = GameInstance.GetBlackboardSystem(game).Get(defs);
+    if Equals(ConvertIntValueToInputScheme(schemes.GetUint(defs.Scheme)), InputScheme.ALTERNATIVE) && ModKeybindsPad.IsPadDevice(schemes.GetUint(defs.Device)) {
+      // Native results go into a variable first: used inline as an argument the call doesn't run.
+      let names = ModKeybindsMenu_Names();
+      let groups = ModKeybindsMenu_Groups();
+      let settings = GameInstance.GetSettingsSystem(game);
+      let scan = ModKeybindsScheme.Value(settings, names, groups, n"MKPad_visionHold", n"IK_Pad_LeftShoulder");
+      let melee = ModKeybindsScheme.Value(settings, names, groups, n"MKPad_quickmelee", n"IK_Pad_LeftShoulder");
+      if NotEquals(scan, melee) {
+        this.StartPulse();
+      }
+    }
+  }
   return result;
 }

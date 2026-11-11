@@ -30,8 +30,8 @@ public static native func ModKeybindsMenu_SetKeys(names: array<CName>, keys: arr
 // Keys of the key combination a mod action is bound to by default (value is its buttonGroup id), else empty
 public static native func ModKeybindsMenu_ComboKeys(value: CName) -> array<CName>
 
-// True when these keys change a key combination compared to startup, or bind an entry the game dropped while unbound (both apply after a restart), and the player wasn't told yet
-public static native func ModKeybindsMenu_RestartNotice(names: array<CName>, keys: array<CName>) -> Bool
+// The entries whose change applies after a restart (a key combination, a key the game dropped while unbound, a shared key of a (Hold) action), when the player wasn't told about them yet; else empty
+public static native func ModKeybindsMenu_RestartNotice(names: array<CName>, keys: array<CName>) -> array<CName>
 
 // Controller scheme the controller entries were made for: Legacy, Agile or Alternative
 public static native func ModKeybindsMenu_PadScheme() -> CName
@@ -47,6 +47,23 @@ public static native func ModKeybindsMenu_KeyCombo() -> String
 
 // Entries that may share their key with another action: the (Hold) bindings, keyboard and controller
 public static native func ModKeybindsMenu_HoldShareNames() -> array<CName>
+
+// For each entry (its settings group path, at its default key), the names of the other entries on
+// the same key that react at the same time, comma separated ("" for none)
+public static native func ModKeybindsMenu_Conflicts(names: array<CName>, keys: array<CName>, groups: array<CName>, atDefault: array<Bool>) -> array<String>
+
+// True when a control scheme's controller keys (Legacy, Agile, Alternative) differ from its defaults
+public static native func ModKeybindsMenu_SchemeEdited(scheme: String) -> Bool
+
+// True when the conflicts (as the popup lists them, after a first letter for the device view: K or P) are not empty and changed since the last popup for that view
+public static native func ModKeybindsMenu_ConflictNotice(text: String) -> Bool
+
+// Hold-only actions in use: "action|keyboard|controller|keyboardShared|controllerShared" (1: waits for the hold on
+// that device; shared: comma list of the actions on its shared key, - for none)
+public static native func ModKeybindsMenu_HoldRules() -> array<String>
+
+// Hold-only actions whose hold doesn't count while a prompt on their key shows
+public static native func ModKeybindsMenu_SetHoldBlocked(actions: array<CName>) -> Void
 
 // The device in use changed (true: a controller). Hold-only controller buttons follow it
 public static native func ModKeybindsMenu_SetDevice(pad: Bool) -> Void

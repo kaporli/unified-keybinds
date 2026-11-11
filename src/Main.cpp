@@ -6,6 +6,7 @@
 #include <fstream>
 #include <array>
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <sstream>
@@ -38,20 +39,37 @@ fs::path g_settingsRead;  // what the game reads: UserSettings.json with the mod
 fs::path g_settingsWrite; // what the game writes, split back into UserSettings.json and keys.json
 fs::path g_mappings;      // what the game reads: Input Loader's merged mappings, single keys made rebindable
 fs::path g_contexts;      // what the game reads: Input Loader's merged contexts, hold-only actions added
+fs::path g_merged;        // Input Loader's merged contexts, as the game opened them
 std::vector<Keybinds::HoldOnly> g_holdOnly; // hold-only actions the session started with
+std::vector<Keybinds::EventRule> g_rules;   // the accepted event rules applied
 std::string g_scheme;     // controller scheme at startup (Legacy, Agile, Alternative)
 bool g_vanillaPads = false; // the optional Vanilla Controller file is installed
 
 std::mutex g_writeMutex;
 std::unordered_set<HANDLE> g_writeHandles;
+std::atomic<int> g_writeCount = 0; // size of g_writeHandles, read on every CloseHandle
+
+std::recursive_mutex g_collectMutex; // one thread collects the actions and builds the copies
+std::atomic<bool> g_optionsFailed = false; // the options copy could not be made: the game reads its own files
 
 std::mutex g_mutex;
 bool g_collected = false;
 std::vector<Keybinds::Action> g_actions;
 std::map<std::string, std::string> g_loaded;    // key each action got at startup
+std::map<std::string, std::string> g_current;   // key each action has now
+bool g_holdAll = false;   // the (Hold) actions have their hold rule also while unshared, see HoldOnlyActions
+bool g_crouchTap = false; // Dynamic scheme: crouch's controller events follow its button, see UpdateCrouchTap
 std::map<std::string, std::string> g_announced; // combination changes the player was told about
 
 thread_local bool t_busy = false;
+
+// While alive, files this thread opens are not redirected by the plugin's own file hook.
+struct Busy
+{
+    bool was = t_busy;
+    Busy() { t_busy = true; }
+    ~Busy() { t_busy = was; }
+};
 
 using CreateFileW_t = HANDLE(WINAPI*)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 CreateFileW_t g_createFileW = nullptr;
@@ -88,21 +106,45 @@ std::string ReadFile(const fs::path& aPath)
     return ss.str();
 }
 
-bool IsOptionsFile(LPCWSTR aPath)
+// True when aPath ends with aTail (lower case, backslashes), whatever its case and slashes.
+bool EndsWith(LPCWSTR aPath, std::wstring_view aTail)
 {
     if (!aPath)
         return false;
-    std::wstring p(aPath);
-    for (auto& c : p)
-        c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
-    const std::wstring tail = L"\\r6\\config\\settings\\platform\\pc\\options.json";
-    return p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0;
+    auto length = wcslen(aPath);
+    if (length < aTail.size())
+        return false;
+    auto at = aPath + (length - aTail.size());
+    for (auto c : aTail)
+    {
+        wchar_t p = *at++;
+        if ((p == L'/' ? L'\\' : static_cast<wchar_t>(towlower(p))) != c)
+            return false;
+    }
+    return true;
+}
+
+bool IsOptionsFile(LPCWSTR aPath)
+{
+    return EndsWith(aPath, L"\\r6\\config\\settings\\platform\\pc\\options.json");
+}
+
+bool IsMappingsFile(LPCWSTR aPath)
+{
+    return EndsWith(aPath, L"\\r6\\cache\\inputusermappings.xml");
+}
+
+bool IsContextsFile(LPCWSTR aPath)
+{
+    return EndsWith(aPath, L"\\r6\\cache\\inputcontexts.xml");
 }
 
 // Builds the merged options.json next to the Input Loader cache. Returns false to let the
 // game read its own file.
 bool Generate(const fs::path& aBase)
 {
+    std::lock_guard collecting(g_collectMutex);
+    g_optionsFailed = true;
     auto base = ReadFile(aBase);
     if (base.empty())
     {
@@ -110,56 +152,40 @@ bool Generate(const fs::path& aBase)
         return false;
     }
 
-    std::vector<Keybinds::Action> actions;
+    bool collected = false;
     {
         std::lock_guard lock(g_mutex);
-        if (g_collected)
-            actions = g_actions;
+        collected = g_collected;
     }
-    bool fresh = actions.empty();
-    if (fresh)
+    if (!collected)
     {
-        actions = Keybinds::Collect(g_root, base, g_scheme, g_vanillaPads, Log);
-        Rcf::Apply(g_root, actions, Log);
-        for (auto& a : NativeSettings::Read(g_root))
+        std::vector<Keybinds::Action> actions;
+        try
         {
-            if (std::none_of(actions.begin(), actions.end(), [&](const auto& b) { return b.name == a.name; }))
-                actions.push_back(std::move(a));
+            actions = Keybinds::Collect(g_root, base, g_scheme, g_vanillaPads, Log);
+            Rcf::Apply(g_root, actions, Log);
+            for (auto& a : NativeSettings::Read(g_root))
+            {
+                if (std::none_of(actions.begin(), actions.end(), [&](const auto& b) { return b.name == a.name; }))
+                    actions.push_back(std::move(a));
+            }
+            // One run per section, also when a mod has keys in both. Vanilla controller sections first.
+            std::stable_sort(actions.begin(), actions.end(), [](const auto& a, const auto& b) {
+                bool va = !a.group.empty(), vb = !b.group.empty();
+                if (va || vb)
+                    return va && !vb;
+                return a.section < b.section;
+            });
+            UserSettings::DropUnrecordedSchemeKeys(g_store, actions, Log);
+            UserSettings::MoveToSchemes(g_store, actions, Log);
         }
-        // One run per section, also when a mod has keys in both. Vanilla controller sections first.
-        std::stable_sort(actions.begin(), actions.end(), [](const auto& a, const auto& b) {
-            bool va = !a.group.empty(), vb = !b.group.empty();
-            if (va || vb)
-                return va && !vb;
-            return a.section < b.section;
-        });
-    }
-    auto merged = Keybinds::MergeOptions(base, actions);
-    if (merged.empty())
-    {
-        Log("options.json has an unexpected layout, leaving it alone");
-        return false;
-    }
-
-    std::error_code ec;
-    fs::create_directories(g_generated.parent_path(), ec);
-    std::ofstream out(g_generated, std::ios::binary | std::ios::trunc);
-    out << merged;
-    out.close();
-    if (!out)
-    {
-        Log("Could not write " + g_generated.string());
-        return false;
-    }
-
-    if (fresh)
-    {
-        UserSettings::DropUnrecordedSchemeKeys(g_store, actions, Log);
-        std::lock_guard lock(g_mutex);
-        g_actions = std::move(actions);
-        g_collected = true;
-        Log(std::to_string(g_actions.size()) + " actions");
-        for (const auto& a : g_actions)
+        catch (const std::exception& e)
+        {
+            Log(std::string("Could not collect the mod actions (") + e.what() + "), the menu stays as the game made it");
+            actions.clear();
+        }
+        Log(std::to_string(actions.size()) + " actions");
+        for (const auto& a : actions)
         {
             std::string mappings;
             for (const auto& m : a.mappings)
@@ -167,19 +193,43 @@ bool Generate(const fs::path& aBase)
             Log("  [" + a.section + "] " + a.name + " = " + a.defaultKey + "  \"" + a.label + "\"" +
                 (a.pad ? " (controller: " + mappings + (a.scheme ? ", scheme" : "") + ")" : ""));
         }
+        // Kept also when the copy below can't be made: collecting again would not help.
+        std::lock_guard lock(g_mutex);
+        g_actions = std::move(actions);
+        g_collected = true;
     }
-    return true;
-}
 
-bool IsMappingsFile(LPCWSTR aPath)
-{
-    if (!aPath)
-        return false;
-    std::wstring p(aPath);
-    for (auto& c : p)
-        c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
-    const std::wstring tail = L"\\r6\\cache\\inputusermappings.xml";
-    return p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0;
+    // The game opens options.json several times per launch: the copy is written once per content.
+    static std::string builtFrom;
+    if (builtFrom != base)
+    {
+        std::vector<Keybinds::Action> actions;
+        {
+            std::lock_guard lock(g_mutex);
+            actions = g_actions;
+        }
+        std::string merged;
+        try
+        {
+            merged = Keybinds::MergeOptions(base, actions);
+        }
+        catch (const std::exception&)
+        {
+        }
+        if (merged.empty())
+        {
+            Log("options.json has an unexpected layout, leaving it alone");
+            return false;
+        }
+        if (!UserSettings::WriteFile(g_generated, merged))
+        {
+            Log("Could not write " + g_generated.string());
+            return false;
+        }
+        builtFrom = base;
+    }
+    g_optionsFailed = false;
+    return true;
 }
 
 void EnsureCollected();
@@ -216,42 +266,75 @@ bool GenerateMappings(LPCWSTR aMerged)
         auto marked = Keybinds::MarkRebindable(aMerged, actions, UserSettings::SavedKeys(g_store), holdKeys, Log);
         if (marked.empty())
             return;
-        std::ofstream out(g_mappings, std::ios::binary | std::ios::trunc);
-        out << marked;
-        out.close();
-        ok = static_cast<bool>(out);
+        ok = UserSettings::WriteFile(g_mappings, marked);
         if (!ok)
             Log("Could not write " + g_mappings.string());
     });
     return ok;
 }
 
-bool IsContextsFile(LPCWSTR aPath)
-{
-    if (!aPath)
-        return false;
-    std::wstring p(aPath);
-    for (auto& c : p)
-        c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
-    const std::wstring tail = L"\\r6\\cache\\inputcontexts.xml";
-    return p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0;
-}
-
 // Input Loader's merged contexts with the hold-only actions marked. Returns false to let the game
 // read the file as it is. The decisions also go to AcceptedEvents, which keeps the long press to the
 // device whose button is shared.
+// The Dynamic scheme crouches on a hold, so B can dodge on a tap. With crouch on a button of its own
+// that hold has no use: crouch then reacts to a tap, as on the other schemes.
+void UpdateCrouchTap()
+{
+    bool tap = false;
+    {
+        std::lock_guard lock(g_mutex);
+        if (!g_crouchTap)
+            return;
+        auto crouch = g_current.find(std::string(Keybinds::kPadPrefix) + "crouchToggle");
+        auto dodge = g_current.find(std::string(Keybinds::kPadPrefix) + "dodgeDash");
+        tap = crouch != g_current.end() && dodge != g_current.end() && crouch->second != dodge->second &&
+              crouch->second.rfind("IK_Pad", 0) == 0 && crouch->second.find('+') == std::string::npos;
+    }
+    // On the dodge's button: the hold the game itself sets for this scheme (not the input file's list,
+    // which also takes the press).
+    AcceptedEvents::SetController("ToggleCrouch", tap ? Keybinds::EventMode::Tap : Keybinds::EventMode::Hold);
+}
+
+// A (Hold) action starts on a long press on the controller while its button is shared, and on the
+// press otherwise: follows the buttons as they are now. (Keyboard keys and the actions that give up
+// their hold are set when the game starts.)
+void UpdateHoldOnly()
+{
+    std::vector<Keybinds::Action> actions;
+    std::map<std::string, std::string> current;
+    {
+        std::lock_guard lock(g_mutex);
+        if (!g_holdAll)
+            return;
+        actions = Keybinds::WithHoldOptions(g_actions);
+        current = g_current;
+    }
+    Busy busy;
+    for (const auto& h : Keybinds::HoldOnlyActions(actions, current, g_settings, true))
+    {
+        // Only actions set up at startup (one with accepted events of its own was left alone).
+        if (std::any_of(g_rules.begin(), g_rules.end(), [&](const auto& r) { return r.action == h.action; }))
+            AcceptedEvents::SetController(h.action, h.controller ? Keybinds::EventMode::Keep : Keybinds::EventMode::All);
+    }
+}
+
 bool GenerateContexts(LPCWSTR aMerged)
 {
     static std::once_flag once;
     static bool ok = false;
     std::call_once(once, [&] {
+        g_merged = aMerged;
         EnsureCollected();
         std::vector<Keybinds::Action> actions;
         {
             std::lock_guard lock(g_mutex);
             actions = g_actions;
         }
-        g_holdOnly = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), UserSettings::SavedKeys(g_store), g_settings);
+        // With the per-device event lists, the hold rule is set up for every (Hold) action that may
+        // share a button, so the controller side can follow the buttons during play.
+        g_holdAll = AcceptedEvents::Active();
+        g_holdOnly = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), UserSettings::SavedKeys(g_store), g_settings,
+                                               g_holdAll);
 #ifdef MKM_TEST
         // Test builds: a file next to the copies turns the hold-only rule off, to compare.
         std::error_code ec;
@@ -264,36 +347,57 @@ bool GenerateContexts(LPCWSTR aMerged)
         std::vector<Keybinds::EventRule> rules;
         auto marked = Keybinds::MarkHoldOnly(aMerged, g_root / "r6" / "cache" / "inputUserMappings.xml", g_holdOnly,
                                              rules, Log);
+        bool crouchTap = g_scheme == "Agile" &&
+                         std::none_of(rules.begin(), rules.end(), [](const auto& r) { return r.action == "ToggleCrouch"; }) &&
+                         std::any_of(actions.begin(), actions.end(), [](const auto& a) {
+                             return a.scheme && a.name == std::string(Keybinds::kPadPrefix) + "crouchToggle";
+                         });
+        if (crouchTap)
+            rules.push_back({"ToggleCrouch", Keybinds::EventMode::Keep, Keybinds::EventMode::Hold});
         AcceptedEvents::Set(rules);
+        g_rules = rules;
+        {
+            std::lock_guard lock(g_mutex);
+            g_crouchTap = crouchTap;
+        }
+        UpdateCrouchTap();
         // The menu lets the (Hold) bindings share their key.
         auto shareable = Keybinds::MarkShareable(marked.empty() ? ReadFile(aMerged) : marked,
                                                  Keybinds::ShareableActions(Keybinds::WithHoldOptions(actions)), Log);
         if (!shareable.empty())
             marked = shareable;
+        // Classic scheme: the scripts count the dodge's double tap, see Keybinds::AddClassicDodge.
+        if (g_scheme == "Legacy")
+        {
+            auto dodge = std::find_if(actions.begin(), actions.end(), [](const auto& a) {
+                return a.scheme && !a.mappings.empty() && a.name == std::string(Keybinds::kPadPrefix) + "dodgeDash";
+            });
+            if (dodge != actions.end())
+            {
+                auto added = Keybinds::AddClassicDodge(marked.empty() ? ReadFile(aMerged) : marked, dodge->mappings.front());
+                if (!added.empty())
+                    marked = added;
+            }
+        }
         if (marked.empty())
             return;
-        std::ofstream out(g_contexts, std::ios::binary | std::ios::trunc);
-        out << marked;
-        out.close();
-        ok = static_cast<bool>(out);
+        ok = UserSettings::WriteFile(g_contexts, marked);
         if (!ok)
             Log("Could not write " + g_contexts.string());
     });
     return ok;
 }
 
-std::wstring Normalized(std::wstring aPath)
-{
-    for (auto& c : aPath)
-        c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
-    return aPath;
-}
-
 // Only the game's own settings file, not other files with the same name.
 bool IsUserSettingsFile(LPCWSTR aPath)
 {
-    static const std::wstring settings = Normalized(g_settings.wstring());
-    return aPath && !settings.empty() && Normalized(aPath) == settings;
+    static const std::wstring settings = [] {
+        auto path = g_settings.wstring();
+        for (auto& c : path)
+            c = c == L'/' ? L'\\' : static_cast<wchar_t>(towlower(c));
+        return path;
+    }();
+    return aPath && !settings.empty() && wcslen(aPath) == settings.size() && EndsWith(aPath, settings);
 }
 
 // Moves what the game wrote into UserSettings.json and keys.json. The file can still be
@@ -306,7 +410,8 @@ void SplitWrittenSettings()
         for (const auto& a : g_actions)
             defaults[a.name] = a.defaultKey;
     }
-    for (int attempt = 0; attempt < 20; ++attempt)
+    std::error_code exists;
+    for (int attempt = 0; attempt < 20 && fs::exists(g_settingsWrite, exists); ++attempt)
     {
         if (UserSettings::Split(g_settingsWrite, g_settings, g_store, Log, defaults))
         {
@@ -316,8 +421,40 @@ void SplitWrittenSettings()
         }
         Sleep(25);
     }
+    if (!fs::exists(g_settingsWrite, exists))
+        return;
     Log("Could not split the settings the game wrote (" + g_settingsWrite.string() +
         "), will retry at next launch");
+}
+
+// The copy to open in place of a file the game reads, or null to open the file itself.
+const fs::path* Served(LPCWSTR aName)
+{
+    if (IsUserSettingsFile(aName))
+    {
+        // The game can read its settings before options.json.
+        EnsureCollected();
+        // Mod sections without the options copy that defines them would reset every setting.
+        if (g_optionsFailed)
+            return nullptr;
+        std::vector<Keybinds::Action> actions;
+        {
+            std::lock_guard lock(g_mutex);
+            actions = g_actions;
+        }
+        auto merged = UserSettings::WithModSections(aName, g_store, actions);
+        if (!merged.empty() && UserSettings::WriteFile(g_settingsRead, merged))
+            return &g_settingsRead;
+        Log("Could not add the mod sections to " + fs::path(aName).string() + ", the game reads it as it is");
+        return nullptr;
+    }
+    if (IsContextsFile(aName))
+        return GenerateContexts(aName) ? &g_contexts : nullptr;
+    if (IsMappingsFile(aName))
+        return GenerateMappings(aName) ? &g_mappings : nullptr;
+    if (IsOptionsFile(aName) && Generate(aName))
+        return &g_generated;
+    return nullptr;
 }
 
 HANDLE WINAPI CreateFileW_Hook(LPCWSTR aName, DWORD aAccess, DWORD aShare, LPSECURITY_ATTRIBUTES aSec, DWORD aDisp,
@@ -333,75 +470,37 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR aName, DWORD aAccess, DWORD aShare, LPSEC
         params.hTemplateFile = aTemplate;
         return CreateFile2(aName, aAccess, aShare, aDisp, &params);
     }
-    if (!t_busy && IsUserSettingsFile(aName))
+    if (t_busy)
+        return g_createFileW(aName, aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
+    if (aAccess & (GENERIC_WRITE | FILE_WRITE_DATA))
     {
-        if (aAccess & (GENERIC_WRITE | FILE_WRITE_DATA))
+        if (!IsUserSettingsFile(aName))
+            return g_createFileW(aName, aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
+        // Split into UserSettings.json and keys.json when the game closes the file.
+        HANDLE h = g_createFileW(g_settingsWrite.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
+        if (h != INVALID_HANDLE_VALUE)
         {
-            // Split into UserSettings.json and keys.json when the game closes the file.
-            HANDLE h = g_createFileW(g_settingsWrite.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
-            if (h != INVALID_HANDLE_VALUE)
-            {
-                std::lock_guard lock(g_writeMutex);
-                g_writeHandles.insert(h);
-            }
-            return h;
+            std::lock_guard lock(g_writeMutex);
+            g_writeHandles.insert(h);
+            g_writeCount = static_cast<int>(g_writeHandles.size());
         }
-
-        t_busy = true;
-        // The game can read its settings before options.json.
-        EnsureCollected();
-        std::vector<Keybinds::Action> actions;
-        {
-            std::lock_guard lock(g_mutex);
-            actions = g_actions;
-        }
-        auto merged = UserSettings::WithModSections(aName, g_store, actions);
-        bool ok = false;
-        if (!merged.empty())
-        {
-            std::ofstream out(g_settingsRead, std::ios::binary | std::ios::trunc);
-            out << merged;
-            out.close();
-            ok = static_cast<bool>(out);
-        }
-        t_busy = false;
-        if (ok)
-            return g_createFileW(g_settingsRead.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
-        Log("Could not add the mod sections to " + fs::path(aName).string() + ", the game reads it as it is");
+        return h;
     }
 
-    if (!t_busy && !(aAccess & (GENERIC_WRITE | FILE_WRITE_DATA)) && IsContextsFile(aName))
+    const fs::path* served = nullptr;
+    try
     {
-        t_busy = true;
-        bool ok = GenerateContexts(aName);
-        t_busy = false;
-        if (ok)
-            return g_createFileW(g_contexts.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
+        Busy busy;
+        served = Served(aName);
     }
-
-    if (!t_busy && !(aAccess & (GENERIC_WRITE | FILE_WRITE_DATA)) && IsMappingsFile(aName))
+    catch (const std::exception& e)
     {
-        t_busy = true;
-        bool ok = GenerateMappings(aName);
-        t_busy = false;
-        if (ok)
-        {
-            return g_createFileW(g_mappings.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
-        }
+        // Never out of the hook: the game reads its own file.
+        Log(std::string("Could not prepare a file the game opened: ") + e.what());
     }
-
-    if (!t_busy && !(aAccess & (GENERIC_WRITE | FILE_WRITE_DATA)) && IsOptionsFile(aName))
-    {
-        t_busy = true;
-        bool ok = Generate(aName);
-        t_busy = false;
-        if (ok)
-        {
-            Log("Game opened options.json, serving the merged copy");
-            return g_createFileW(g_generated.c_str(), aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
-        }
-    }
-    return g_createFileW(aName, aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
+    if (served && IsOptionsFile(aName))
+        Log("Game opened options.json, serving the merged copy");
+    return g_createFileW(served ? served->c_str() : aName, aAccess, aShare, aSec, aDisp, aFlags, aTemplate);
 }
 
 // The hooks can run on another thread before Attach has stored the original function: call the system directly then.
@@ -417,17 +516,25 @@ BOOL WINAPI CloseHandle_Hook(HANDLE aHandle)
     if (!g_closeHandle)
         return CloseHandle_Direct(aHandle);
     bool lastWrite = false;
-    if (!t_busy)
+    // Nearly every close in the process comes through here: no lock unless a settings write is open.
+    if (g_writeCount > 0 && !t_busy)
     {
         std::lock_guard lock(g_writeMutex);
         lastWrite = g_writeHandles.erase(aHandle) > 0 && g_writeHandles.empty();
+        g_writeCount = static_cast<int>(g_writeHandles.size());
     }
     BOOL result = g_closeHandle(aHandle);
     if (lastWrite)
     {
-        t_busy = true;
-        SplitWrittenSettings();
-        t_busy = false;
+        try
+        {
+            Busy busy;
+            SplitWrittenSettings();
+        }
+        catch (const std::exception& e)
+        {
+            Log(std::string("Could not split the settings the game wrote: ") + e.what());
+        }
     }
     return result;
 }
@@ -440,10 +547,8 @@ void EnsureCollected()
         if (g_collected)
             return;
     }
-    bool busy = t_busy;
-    t_busy = true;
+    Busy busy;
     Generate(g_root / "r6" / "config" / "settings" / "platform" / "pc" / "options.json");
-    t_busy = busy;
 }
 
 enum class NameList
@@ -535,6 +640,155 @@ void Native_HoldShareNames(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, 
         aOut->PushBack(RED4ext::CName(a.name.c_str()));
         aOut->PushBack(RED4ext::CName(a.holdOption.c_str()));
     }
+}
+
+// For each entry (names, keys, settings groups, at its default key), the names of the other entries
+// on the same key that react at the same time, comma separated. See Keybinds::Conflicts.
+void Native_Conflicts(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
+                      int64_t)
+{
+    RED4ext::DynArray<RED4ext::CName> names;
+    RED4ext::DynArray<RED4ext::CName> keys;
+    RED4ext::DynArray<RED4ext::CName> groups;
+    RED4ext::DynArray<bool> atDefault;
+    RED4ext::GetParameter(aFrame, &names);
+    RED4ext::GetParameter(aFrame, &keys);
+    RED4ext::GetParameter(aFrame, &groups);
+    RED4ext::GetParameter(aFrame, &atDefault);
+    aFrame->code++;
+    if (!aOut)
+        return;
+    Busy busy;
+    EnsureCollected();
+    static const auto options = Keybinds::OptionMappings(g_mappings);
+    // What the entries of each name bring to the check. The actions are fixed once collected.
+    struct Known
+    {
+        std::vector<std::string> mappings;
+        std::string defaultKey;
+        bool shareable = false;
+    };
+    static const auto known = [] {
+        std::map<std::string, Known> out;
+        std::lock_guard lock(g_mutex);
+        for (const auto& a : Keybinds::WithHoldOptions(g_actions))
+        {
+            auto& k = out[a.name];
+            k.mappings.insert(k.mappings.end(), a.mappings.begin(), a.mappings.end());
+            if (!a.defaultKey.empty())
+                k.defaultKey = a.defaultKey;
+            if (a.holdShare)
+            {
+                k.shareable = true;
+                out[a.holdOption].shareable = true;
+            }
+        }
+        return out;
+    }();
+    std::vector<Keybinds::BindingEntry> entries;
+    {
+        for (uint32_t i = 0; i < names.size() && i < keys.size(); ++i)
+        {
+            Keybinds::BindingEntry e;
+            e.name = names[i].ToString();
+            e.key = keys[i].ToString();
+            e.atDefault = i < atDefault.size() && atDefault[i];
+            // The game's controller entries have groups of their own (SettingsModPad...).
+            std::string group = i < groups.size() ? groups[i].ToString() : std::string();
+            e.gamePad = group.rfind("/key_bindings/SettingsModPad", 0) == 0;
+            if (Keybinds::IsModGroup(group) && !e.gamePad)
+                e.mod = group;
+            auto found = options.find(e.name);
+            if (found != options.end())
+                e.mappings = found->second;
+            if (auto k = known.find(e.name); k != known.end())
+            {
+                e.mappings.insert(e.mappings.end(), k->second.mappings.begin(), k->second.mappings.end());
+                // The game has no default for a mod's entry: the mod's key is kept here.
+                if (!k->second.defaultKey.empty())
+                    e.atDefault = e.key == k->second.defaultKey;
+                e.shareable = k->second.shareable;
+            }
+            entries.push_back(std::move(e));
+        }
+    }
+    auto found = Keybinds::Conflicts(g_merged.empty() ? g_root / "r6" / "cache" / "inputContexts.xml" : g_merged, entries);
+    for (const auto& list : found)
+    {
+        std::string line;
+        for (const auto& n : list)
+            line += (line.empty() ? "" : ",") + n;
+        aOut->PushBack(RED4ext::CString(line.c_str()));
+    }
+}
+
+// True when the conflicts (aText, as the popup lists them) are not empty and differ from the last
+// ones shown, so the popup comes once per change.
+void Native_ConflictNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    RED4ext::CString text;
+    RED4ext::GetParameter(aFrame, &text);
+    aFrame->code++;
+    // The first letter is the device view (keyboard or controller), each told on its own.
+    static std::map<char, std::string> announced;
+    std::string now = text.c_str();
+    char view = now.empty() ? ' ' : now[0];
+    if (!now.empty())
+        now.erase(0, 1);
+    bool notice = !now.empty() && now != announced[view];
+    announced[view] = now;
+    if (aOut)
+        *aOut = notice;
+}
+
+// Hold-only actions in use, for the prompt check: "action|keyboard|controller|keyboardShared|controllerShared":
+// whether it waits for the hold on each device (1/0), and the actions on its shared key per device (comma list).
+void Native_HoldRules(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CString>* aOut,
+                      int64_t)
+{
+    aFrame->code++;
+    if (!aOut)
+        return;
+    for (const auto& h : g_holdOnly)
+    {
+        for (const auto& r : g_rules)
+        {
+            if (r.action != h.action)
+                continue;
+            auto keep = [](Keybinds::EventMode m) { return m == Keybinds::EventMode::Keep ? "1" : "0"; };
+            auto join = [](const std::vector<std::string>& aList) {
+                std::string out;
+                for (const auto& a : aList)
+                    out += (out.empty() ? "" : ",") + a;
+                return out.empty() ? std::string("-") : out;
+            };
+            std::string line = h.action + "|" + keep(r.keyboard) + "|" + keep(r.controller) + "|" + join(r.keyboardShared) +
+                               "|" + join(r.controllerShared);
+            aOut->PushBack(RED4ext::CString(line.c_str()));
+        }
+    }
+}
+
+// Hold-only actions giving way to an on-screen prompt on their key, see AcceptedEvents::SetBlocked.
+void Native_SetHoldBlocked(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    RED4ext::DynArray<RED4ext::CName> actions;
+    RED4ext::GetParameter(aFrame, &actions);
+    aFrame->code++;
+    std::vector<std::string> list;
+    for (const auto& a : actions)
+        list.push_back(a.ToString());
+    AcceptedEvents::SetBlocked(list);
+}
+
+// True when a control scheme's controller keys (aScheme: Legacy, Agile, Alternative) differ from its defaults.
+void Native_SchemeEdited(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    RED4ext::CString scheme;
+    RED4ext::GetParameter(aFrame, &scheme);
+    aFrame->code++;
+    if (aOut)
+        *aOut = UserSettings::SchemeEdited(g_store, scheme.c_str());
 }
 
 // Controller scheme the controller entries were made for.
@@ -630,17 +884,22 @@ void Native_SetKeys(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, 
 
     EnsureCollected();
     std::vector<InputOverrides::Key> out;
-    std::lock_guard lock(g_mutex);
+    std::unique_lock lock(g_mutex);
     for (uint32_t i = 0; i < names.size() && i < keys.size(); ++i)
     {
         std::string name = names[i].ToString();
         for (const auto& a : g_actions)
         {
-            if (a.name == name)
-                out.push_back({name, a.mappings, Keybinds::Fits(a, keys[i].ToString()) ? keys[i].ToString() : a.defaultKey, a.pad});
+            if (a.name != name)
+                continue;
+            out.push_back({name, a.mappings, Keybinds::Fits(a, keys[i].ToString()) ? keys[i].ToString() : a.defaultKey, a.pad});
+            g_current[name] = out.back().key;
         }
     }
     InputOverrides::Set(out);
+    lock.unlock();
+    UpdateCrouchTap();
+    UpdateHoldOnly();
 }
 
 // Keys of a key combination: one a mod binds an action to (its buttonGroup id), or one picked in the
@@ -725,9 +984,11 @@ void SetStoredKeys()
         {
             out.push_back({a.name, a.mappings, Keybinds::StartKey(a, saved), a.pad});
             g_loaded[a.name] = out.back().key;
+            g_current[a.name] = out.back().key;
         }
     }
     InputOverrides::Set(out);
+    UpdateCrouchTap();
 }
 
 // Key bindings the Lua companion found in Native Settings UI: name, section, label, key, default.
@@ -762,6 +1023,13 @@ struct KeyWatch
     std::atomic<bool> running = false;
     std::string keyCombo; // keyboard and mouse: "held+pressed", or empty
     std::string padCombo; // controller: "held+pressed", or empty
+
+    ~KeyWatch()
+    {
+        running = false;
+        if (thread.joinable())
+            thread.join();
+    }
 };
 KeyWatch g_watch;
 
@@ -962,7 +1230,8 @@ bool IsCombo(const Keybinds::Action& aAction, const std::string& aKey)
 // True when the keys the menu holds change a key combination compared to startup, or bind an entry
 // whose binding the game dropped (those only apply after a restart), and the player wasn't told
 // about these changes yet.
-void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::DynArray<RED4ext::CName>* aOut,
+                          int64_t)
 {
     RED4ext::DynArray<RED4ext::CName> names;
     RED4ext::DynArray<RED4ext::CName> keys;
@@ -970,6 +1239,7 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
     RED4ext::GetParameter(aFrame, &keys);
     aFrame->code++;
 
+    Busy busy;
     std::map<std::string, std::string> pending;
     {
         std::lock_guard lock(g_mutex);
@@ -989,8 +1259,7 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
             if (key == loaded->second)
                 continue;
             // A controller entry without a default button has no row until it has a saved button.
-            bool noRow = action->pad && action->defaultKey == Keybinds::kUnbound && loaded->second == Keybinds::kUnbound;
-            if (IsCombo(*action, key) || IsCombo(*action, loaded->second) || noRow)
+            if (IsCombo(*action, key) || IsCombo(*action, loaded->second))
                 pending[name] = key;
         }
     }
@@ -1004,24 +1273,46 @@ void Native_RestartNotice(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, b
         }
         for (uint32_t i = 0; i < names.size() && i < keys.size(); ++i)
             current[names[i].ToString()] = keys[i].ToString();
-        auto now = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), current, g_settings);
+        auto now = Keybinds::HoldOnlyActions(Keybinds::WithHoldOptions(actions), current, g_settings, g_holdAll);
+        // Controller buttons follow during play (UpdateHoldOnly), unless a button coming or going
+        // belongs to an action that is itself set up for sharing when the game starts.
+        static const auto sensitive = Keybinds::HoldSensitiveMappings(g_root / "r6" / "cache" / "inputContexts.xml",
+                                                                      Keybinds::ShareableActions(Keybinds::WithHoldOptions(actions)));
+        auto padSame = [&](const Keybinds::HoldOnly& a, const Keybinds::HoldOnly& b) {
+            if (!g_holdAll)
+                return a.controller == b.controller && a.padMappings == b.padMappings;
+            for (const auto* side : {&a, &b})
+            {
+                const auto& other = side == &a ? b : a;
+                for (const auto& m : side->padMappings)
+                {
+                    if (sensitive.contains(m) && std::find(other.padMappings.begin(), other.padMappings.end(), m) == other.padMappings.end())
+                        return false;
+                }
+            }
+            return true;
+        };
         auto same = now.size() == g_holdOnly.size() &&
-                    std::equal(now.begin(), now.end(), g_holdOnly.begin(), [](const auto& a, const auto& b) {
-                        return a.action == b.action && a.controller == b.controller && a.keyboard == b.keyboard &&
-                               a.padMappings == b.padMappings && a.keyOptions == b.keyOptions;
+                    std::equal(now.begin(), now.end(), g_holdOnly.begin(), [&](const auto& a, const auto& b) {
+                        return a.action == b.action && a.keyboard == b.keyboard && a.keyOptions == b.keyOptions && padSame(a, b);
                     });
-        if (!same)
+        // The (Hold) entries whose sharing changed: keyboard entry for a key, controller entry for a button.
+        for (std::size_t i = 0; !same && i < now.size(); ++i)
         {
-            std::string text;
-            for (const auto& h : now)
-                text += h.action + (h.controller ? "c" : "") + (h.keyboard ? "k" : "") + ";";
-            pending["holdOnly"] = text;
+            const auto* was = i < g_holdOnly.size() && g_holdOnly[i].action == now[i].action ? &g_holdOnly[i] : nullptr;
+            if (!was || was->keyboard != now[i].keyboard || was->keyOptions != now[i].keyOptions)
+                pending[now[i].option] = "shared";
+            if (!was || !padSame(*was, now[i]))
+                pending[now[i].padEntry] = "shared";
         }
     }
     bool notice = !pending.empty() && pending != g_announced;
     g_announced = pending;
-    if (aOut)
-        *aOut = notice;
+    if (aOut && notice)
+    {
+        for (const auto& [name, key] : pending)
+            aOut->PushBack(RED4ext::CName(name.c_str()));
+    }
 }
 
 #ifdef MKM_TEST
@@ -1110,175 +1401,55 @@ void Native_TestHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_
 
 #endif
 
-void RegisterTypes()
+// Registers a native: script name, function, return type (null for none), parameters as type and name.
+template <typename Fn>
+void Register(const char* aName, Fn aFn, const char* aReturn, std::initializer_list<std::pair<const char*, const char*>> aParams = {})
 {
+    auto function = RED4ext::CGlobalFunction::Create(aName, aName, aFn);
+    function->flags = {.isNative = true, .isStatic = true};
+    for (const auto& [type, name] : aParams)
+        function->AddParam(type, name);
+    if (aReturn)
+        function->SetReturnType(aReturn);
+    RED4ext::CRTTISystem::Get()->RegisterFunction(function);
 }
 
 void PostRegisterTypes()
 {
-    auto rtti = RED4ext::CRTTISystem::Get();
-    RED4ext::CBaseFunction::Flags flags = {.isNative = true, .isStatic = true};
-
-    auto names = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_Names", "ModKeybindsMenu_Names", &Native_Names);
-    names->flags = flags;
-    names->SetReturnType("array:CName");
-    rtti->RegisterFunction(names);
-
-    auto defaults =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_Defaults", "ModKeybindsMenu_Defaults", &Native_Defaults);
-    defaults->flags = flags;
-    defaults->SetReturnType("array:CName");
-    rtti->RegisterFunction(defaults);
-
-    auto groups =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_Groups", "ModKeybindsMenu_Groups", &Native_Groups);
-    groups->flags = flags;
-    groups->SetReturnType("array:CName");
-    rtti->RegisterFunction(groups);
-
-    auto saved = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_Saved", "ModKeybindsMenu_Saved", &Native_Saved);
-    saved->flags = flags;
-    saved->SetReturnType("array:CName");
-    rtti->RegisterFunction(saved);
-
-    auto keys = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_LabelKeys", "ModKeybindsMenu_LabelKeys",
-                                                 &Native_LabelKeys);
-    keys->flags = flags;
-    keys->SetReturnType("array:String");
-    rtti->RegisterFunction(keys);
-
-    auto texts = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_LabelTexts", "ModKeybindsMenu_LabelTexts",
-                                                  &Native_LabelTexts);
-    texts->flags = flags;
-    texts->SetReturnType("array:String");
-    rtti->RegisterFunction(texts);
-
-    auto padNames =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadNames", "ModKeybindsMenu_PadNames", &Native_PadNames);
-    padNames->flags = flags;
-    padNames->SetReturnType("array:CName");
-    rtti->RegisterFunction(padNames);
-
-
-    auto holdShare = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_HoldShareNames", "ModKeybindsMenu_HoldShareNames",
-                                                      &Native_HoldShareNames);
-    holdShare->flags = flags;
-    holdShare->SetReturnType("array:CName");
-    rtti->RegisterFunction(holdShare);
-
-    auto padScheme =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadScheme", "ModKeybindsMenu_PadScheme", &Native_PadScheme);
-    padScheme->flags = flags;
-    padScheme->SetReturnType("CName");
-    rtti->RegisterFunction(padScheme);
-
-    auto schemeNotice = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SchemeNotice", "ModKeybindsMenu_SchemeNotice",
-                                                         &Native_SchemeNotice);
-    schemeNotice->flags = flags;
-    schemeNotice->AddParam("String", "scheme");
-    schemeNotice->SetReturnType("Bool");
-    rtti->RegisterFunction(schemeNotice);
-
-    auto rcfMods =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RcfMods", "ModKeybindsMenu_RcfMods", &Native_RcfMods);
-    rcfMods->flags = flags;
-    rcfMods->SetReturnType("array:String");
-    rtti->RegisterFunction(rcfMods);
-
-    auto setKeys =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetKeys", "ModKeybindsMenu_SetKeys", &Native_SetKeys);
-    setKeys->flags = flags;
-    setKeys->AddParam("array:CName", "names");
-    setKeys->AddParam("array:CName", "keys");
-    rtti->RegisterFunction(setKeys);
-
-    auto setStable =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetStable", "ModKeybindsMenu_SetStable", &Native_SetStable);
-    setStable->flags = flags;
-    setStable->AddParam("Bool", "stable");
-    rtti->RegisterFunction(setStable);
-
-    auto comboKeys =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_ComboKeys", "ModKeybindsMenu_ComboKeys", &Native_ComboKeys);
-    comboKeys->flags = flags;
-    comboKeys->AddParam("CName", "value");
-    comboKeys->SetReturnType("array:CName");
-    rtti->RegisterFunction(comboKeys);
-
-    auto restartNotice = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_RestartNotice", "ModKeybindsMenu_RestartNotice",
-                                                          &Native_RestartNotice);
-    restartNotice->flags = flags;
-    restartNotice->AddParam("array:CName", "names");
-    restartNotice->AddParam("array:CName", "keys");
-    restartNotice->SetReturnType("Bool");
-    rtti->RegisterFunction(restartNotice);
-
-    auto watchModifier = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_WatchModifier", "ModKeybindsMenu_WatchModifier",
-                                                          &Native_WatchModifier);
-    watchModifier->flags = flags;
-    rtti->RegisterFunction(watchModifier);
-
-    auto keyCombo =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_KeyCombo", "ModKeybindsMenu_KeyCombo", &Native_KeyCombo);
-    keyCombo->flags = flags;
-    keyCombo->SetReturnType("String");
-    rtti->RegisterFunction(keyCombo);
-
+    Register("ModKeybindsMenu_Names", &Native_Names, "array:CName");
+    Register("ModKeybindsMenu_Defaults", &Native_Defaults, "array:CName");
+    Register("ModKeybindsMenu_Groups", &Native_Groups, "array:CName");
+    Register("ModKeybindsMenu_Saved", &Native_Saved, "array:CName");
+    Register("ModKeybindsMenu_LabelKeys", &Native_LabelKeys, "array:String");
+    Register("ModKeybindsMenu_LabelTexts", &Native_LabelTexts, "array:String");
+    Register("ModKeybindsMenu_PadNames", &Native_PadNames, "array:CName");
+    Register("ModKeybindsMenu_HoldShareNames", &Native_HoldShareNames, "array:CName");
+    Register("ModKeybindsMenu_Conflicts", &Native_Conflicts, "array:String", {{"array:CName", "names"}, {"array:CName", "keys"}, {"array:CName", "groups"}, {"array:Bool", "atDefault"}});
+    Register("ModKeybindsMenu_ConflictNotice", &Native_ConflictNotice, "Bool", {{"String", "text"}});
+    Register("ModKeybindsMenu_HoldRules", &Native_HoldRules, "array:String");
+    Register("ModKeybindsMenu_SetHoldBlocked", &Native_SetHoldBlocked, nullptr, {{"array:CName", "actions"}});
+    Register("ModKeybindsMenu_SchemeEdited", &Native_SchemeEdited, "Bool", {{"String", "scheme"}});
+    Register("ModKeybindsMenu_PadScheme", &Native_PadScheme, "CName");
+    Register("ModKeybindsMenu_SchemeNotice", &Native_SchemeNotice, "Bool", {{"String", "scheme"}});
+    Register("ModKeybindsMenu_RcfMods", &Native_RcfMods, "array:String");
+    Register("ModKeybindsMenu_SetKeys", &Native_SetKeys, nullptr, {{"array:CName", "names"}, {"array:CName", "keys"}});
+    Register("ModKeybindsMenu_SetStable", &Native_SetStable, nullptr, {{"Bool", "stable"}});
+    Register("ModKeybindsMenu_ComboKeys", &Native_ComboKeys, "array:CName", {{"CName", "value"}});
+    Register("ModKeybindsMenu_RestartNotice", &Native_RestartNotice, "array:CName", {{"array:CName", "names"}, {"array:CName", "keys"}});
+    Register("ModKeybindsMenu_WatchModifier", &Native_WatchModifier, nullptr);
+    Register("ModKeybindsMenu_KeyCombo", &Native_KeyCombo, "String");
 #ifdef MKM_TEST
-    auto testLists =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestLists", "ModKeybindsMenu_TestLists", &Native_TestLists);
-    testLists->flags = flags;
-    testLists->AddParam("Int32", "list");
-    testLists->AddParam("Int32", "size");
-    testLists->SetReturnType("String");
-    rtti->RegisterFunction(testLists);
+    Register("ModKeybindsMenu_TestLists", &Native_TestLists, "String", {{"Int32", "list"}, {"Int32", "size"}});
 #endif
-
-    auto setDevice =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_SetDevice", "ModKeybindsMenu_SetDevice", &Native_SetDevice);
-    setDevice->flags = flags;
-    setDevice->AddParam("Bool", "pad");
-    rtti->RegisterFunction(setDevice);
-
-    auto watchPad =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_WatchPad", "ModKeybindsMenu_WatchPad", &Native_WatchPad);
-    watchPad->flags = flags;
-    rtti->RegisterFunction(watchPad);
-
-    auto padCombo =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_PadCombo", "ModKeybindsMenu_PadCombo", &Native_PadCombo);
-    padCombo->flags = flags;
-    padCombo->SetReturnType("String");
-    rtti->RegisterFunction(padCombo);
-
-    auto nativeSettings = RED4ext::CGlobalFunction::Create(
-        "ModKeybindsMenu_SetNativeSettings", "ModKeybindsMenu_SetNativeSettings", &Native_SetNativeSettings);
-    nativeSettings->flags = flags;
-    for (auto param : {"names", "sections", "labels", "keys", "defaults"})
-        nativeSettings->AddParam("array:String", param);
-    rtti->RegisterFunction(nativeSettings);
-
+    Register("ModKeybindsMenu_SetDevice", &Native_SetDevice, nullptr, {{"Bool", "pad"}});
+    Register("ModKeybindsMenu_WatchPad", &Native_WatchPad, nullptr);
+    Register("ModKeybindsMenu_PadCombo", &Native_PadCombo, "String");
+    Register("ModKeybindsMenu_SetNativeSettings", &Native_SetNativeSettings, nullptr, {{"array:String", "names"}, {"array:String", "sections"}, {"array:String", "labels"}, {"array:String", "keys"}, {"array:String", "defaults"}});
 #ifdef MKM_TEST
-    auto testMapping = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestMapping", "ModKeybindsMenu_TestMapping",
-                                                        &Native_TestMapping);
-    testMapping->flags = flags;
-    testMapping->AddParam("String", "mapping");
-    testMapping->SetReturnType("array:String");
-    rtti->RegisterFunction(testMapping);
-    auto testHash =
-        RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestHash", "ModKeybindsMenu_TestHash", &Native_TestHash);
-    testHash->flags = flags;
-    testHash->AddParam("String", "name");
-    testHash->SetReturnType("Int32");
-    rtti->RegisterFunction(testHash);
-
-    auto testScan = RED4ext::CGlobalFunction::Create("ModKeybindsMenu_TestScan", "ModKeybindsMenu_TestScan", &Native_TestScan);
-    testScan->flags = flags;
-    testScan->AddParam("String", "name");
-    testScan->SetReturnType("Int32");
-    rtti->RegisterFunction(testScan);
+    Register("ModKeybindsMenu_TestMapping", &Native_TestMapping, "array:String", {{"String", "mapping"}});
+    Register("ModKeybindsMenu_TestHash", &Native_TestHash, "Int32", {{"String", "name"}});
+    Register("ModKeybindsMenu_TestScan", &Native_TestScan, "Int32", {{"String", "name"}});
 #endif
-
     SetStoredKeys();
 }
 } // namespace
@@ -1303,19 +1474,27 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         g_contexts = g_root / "r6" / "cache" / "modkeybinds" / "inputContexts.xml";
         std::error_code ec;
         fs::create_directories(g_generated.parent_path(), ec);
-
-        // A write the game made right before a crash may not have been split yet.
-        if (fs::exists(g_settingsWrite, ec) && fs::exists(g_settings, ec) &&
-            fs::last_write_time(g_settingsWrite, ec) > fs::last_write_time(g_settings, ec))
+        // A write the game made right before a crash may not have been split yet. It also holds the
+        // control scheme that session saved.
+        bool pending = fs::exists(g_settingsWrite, ec) && fs::exists(g_settings, ec) &&
+                       fs::last_write_time(g_settingsWrite, ec) > fs::last_write_time(g_settings, ec);
+        try
         {
-            SplitWrittenSettings();
-        }
-        fs::remove(g_settingsWrite, ec);
+            g_scheme = UserSettings::ListValue(pending ? g_settingsWrite : g_settings,
+                                               g_root / "r6" / "config" / "settings" / "options.json",
+                                               "/controls/controller", "InputSchemesMode");
+            UserSettings::SetScheme(g_scheme);
+            if (pending)
+                SplitWrittenSettings();
+            fs::remove(g_settingsWrite, ec);
 
-        // Version 1.0.0 saved the mod sections in UserSettings.json: move them out.
-        UserSettings::Split(g_settings, g_settings, g_store, Log);
-        g_scheme = UserSettings::ListValue(g_settings, g_root / "r6" / "config" / "settings" / "options.json",
-                                           "/controls/controller", "InputSchemesMode");
+            // Version 1.0.0 saved the mod sections in UserSettings.json: move them out.
+            UserSettings::Split(g_settings, g_settings, g_store, Log);
+        }
+        catch (const std::exception& e)
+        {
+            Log(std::string("Could not read the saved settings: ") + e.what());
+        }
 
         HMODULE self = nullptr;
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -1355,7 +1534,6 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
             Log("Could not add the per-frame update, mod keys changed in the menu will not apply");
 
         auto rtti = RED4ext::CRTTISystem::Get();
-        rtti->AddRegisterCallback(RegisterTypes);
         rtti->AddPostRegisterCallback(PostRegisterTypes);
         Log("Loaded, game folder: " + g_root.string());
         Log("Controller scheme: " + (g_scheme.empty() ? std::string("unknown") : g_scheme));
@@ -1383,7 +1561,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 7, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 8, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

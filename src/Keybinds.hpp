@@ -29,7 +29,7 @@ struct Action
     std::string labelFormat;           // such a label, when it isn't the game's (a controller entry's "% (Vehicle)")
     bool scheme = false;               // a controller entry whose buttons come from a control scheme's copy
     std::string place;                 // controller entries: where the button applies, empty on foot
-    std::string holdOption;            // controller entry of a "(Hold)" binding: the game's option, e.g. sprintHold
+    std::string holdOption;            // controller entry of a "(Hold)" binding or Scan (Toggle): the game's option, e.g. sprintHold
     std::vector<std::string> gameActions; // ...and the game actions its mappings feed, e.g. Sprint
     bool holdShare = false;            // ...and its button may be shared: it starts on a long press then
 };
@@ -39,6 +39,8 @@ struct Action
 struct HoldOnly
 {
     std::string action;      // game action, e.g. Sprint
+    std::string option;      // the game's (Hold) option, e.g. sprintHold (its keyboard entry)
+    std::string padEntry;    // its controller entry, e.g. MKPad_sprintHold
     bool controller = false; // its controller button is shared
     bool keyboard = false;   // its keyboard key is shared
     std::vector<std::string> padMappings; // mappings of the controller entries it shares with
@@ -50,7 +52,10 @@ enum class EventMode
 {
     Keep,  // as in the input contexts
     All,   // empty: every event
-    NoHold // without the hold events
+    NoHold, // without the hold events
+    None,   // no event from the device (a pattern event a button never sends)
+    Tap,    // pressed and released only: reacts to a tap, not to a hold
+    Hold    // hold complete only: reacts to a hold, not to a tap
 };
 
 struct EventRule
@@ -58,6 +63,10 @@ struct EventRule
     std::string action;
     EventMode keyboard = EventMode::Keep;
     EventMode controller = EventMode::Keep;
+    // For a hold-only action: the actions on its shared key, per device. A prompt for one of them
+    // (its input action) on screen makes the hold-only action give way.
+    std::vector<std::string> keyboardShared;
+    std::vector<std::string> controllerShared;
 };
 
 // Keys of the game's own key binding options in its settings file: group path -> option -> key.
@@ -65,12 +74,28 @@ std::map<std::string, std::map<std::string, std::string>> GameKeys(const std::fi
 
 // The hold-only actions for the keys a session starts with: controller buttons from aSaved (or
 // defaults), keyboard keys from the game's settings file (same settings group as the hold option).
+// aAll: also the (Hold) actions that share nothing now but may (holdShare). They get the same setup
+// with every event on both devices, so a button shared later counts at once.
 std::vector<HoldOnly> HoldOnlyActions(const std::vector<Action>& aActions,
                                       const std::map<std::string, std::string>& aSaved,
-                                      const std::filesystem::path& aUserSettings);
+                                      const std::filesystem::path& aUserSettings, bool aAll = false);
+
+// Mappings that feed an action which changes when a (Hold) action comes onto its button: one that
+// reacts to a hold itself (it gives the hold up), or Sprint (Toggle). Those changes are made when the
+// game starts, so sharing such a button applies after a restart.
+// aShareable: the (Hold) actions that may share (two of them on one button both start on a long press).
+std::set<std::string> HoldSensitiveMappings(const std::filesystem::path& aMerged, const std::set<std::string>& aShareable);
 
 // Actions of the (Hold) bindings whose key may be shared (holdShare entries), e.g. Sprint, Crouch.
 std::set<std::string> ShareableActions(const std::vector<Action>& aActions);
+
+// The Classic scheme dodges on a double tap, which the game counts itself. It misses the taps on a
+// button that also has a hold (the press is held back and arrives together with the release), so a
+// dodge moved to such a button never fires. Input contexts (aXml) with an action of ours on aMapping
+// (the dodge's Classic copy) next to every Dodge: it gets the plain presses, and the scripts count
+// them (ClassicDodge.reds). Empty if unchanged.
+inline constexpr const char* kClassicDodge = "ModKeybindsDodge";
+std::string AddClassicDodge(const std::string& aXml, const std::string& aMapping);
 
 // Input contexts (aXml) with aActions taken out of the menu's conflict checks (the Settings*
 // contexts), so their key can be shared with another action: an included context that holds one
@@ -95,6 +120,10 @@ inline constexpr const char* kPadPrefix = "MKPad_";
 // Key of an entry the player unbound (the game's own value for an action without a key). Kept as
 // the player's choice. An entry without a stored key ("None") was never set and gets the mod's key.
 inline constexpr const char* kUnbound = "IK_None";
+
+// A key no keyboard or controller sends (a reserved key code): the mappings file's stand-in for a
+// controller entry that has no button yet.
+inline constexpr const char* kNoKey = "IK_Unknown0A";
 
 // The key an action starts a session with: RCF's for keys it keeps (the scripts copy every
 // change to RCF), else the one saved in the menu, else the mod's.
@@ -152,6 +181,32 @@ std::string MarkRebindable(const std::filesystem::path& aMerged, const std::vect
 
 // aBaseOptions with one group per section added. Groups from an older run are replaced.
 std::string MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions);
+
+// A key binding entry for the conflict check.
+struct BindingEntry
+{
+    std::string name;                  // settings var name
+    std::string key;                   // its key, a combination as "IK_A+IK_B"
+    std::vector<std::string> mappings; // mappings it sets; empty: the mod reads the key itself
+    bool atDefault = false;            // at its default key (the game's, or the mod's)
+    std::string mod;                   // settings group of the mod section it is in, empty for the game's
+    bool gamePad = false;              // one of the game's controller entries (the game's menu doesn't check them)
+    bool shareable = false;            // a (Hold) entry that may share its key (tap / hold)
+};
+
+// Mappings of each overridableUI name in a mappings file (aMappings).
+std::map<std::string, std::vector<std::string>> OptionMappings(const std::filesystem::path& aMappings);
+
+// For each entry, the other entries on the same key that can react at the same time: their actions
+// are in one gameplay context (aContexts, the merged input contexts), or one of them reads the key
+// itself (no mappings). At least one must be a mod's entry, or both the game's controller entries
+// (the game's menu checks its own keyboard entries). Two
+// entries at their default keys count only when they are from two different mods (mods pick
+// defaults that fit the game, not each other). Not counted: a (Hold) entry
+// sharing with a non-(Hold) one (tap / hold), entries feeding the same action, and entries whose
+// mappings no context uses.
+std::vector<std::vector<std::string>> Conflicts(const std::filesystem::path& aContexts,
+                                                const std::vector<BindingEntry>& aEntries);
 
 // "vehicleFlightLinearBrake" -> "Vehicle Flight Linear Brake"
 std::string Humanize(const std::string& aText);
