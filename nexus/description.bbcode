@@ -9,14 +9,14 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [*]One section per mod with names from the mod's files, for example [i]"Mod: [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url]"[/i] with [i]"Vehicle Flight Linear Brake"[/i]. Add or remove a mod and the sections follow.[/*]
 [*]Also lists keys the mod didn't make rebindable, for example [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url]'s F1 to F4 and T. Actions already in the menu (vanilla, or from mods like [url=https://www.nexusmods.com/cyberpunk2077/mods/4008]No More Hard-coded Keybinds[/url]) are not listed twice.[/*]
 [*]A changed key applies right away and stays in sync with where the mod keeps it (see the table below).[/*]
-[*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Record your own: [b]hold one key and press another[/b] ([i]"Ctrl + K"[/i], [i]"Q + E"[/i]), or on a controller [b]hold one button and press another[/b] ([i]"LB + A"[/i]). A key pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.
+[*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Record your own: [b]hold one key and press another[/b] ([i]ex. "Ctrl + K"[/i], [i]"Q + E"[/i]), or on a controller [b]hold one button and press another[/b] ([i]"LB + A"[/i]). A key pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/combination.png[/img]
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/prompt.png[/img][/*]
 [*][b]Tap or hold on one key[/b]: a (Hold) action can share its key with another action. Tap for the other action, hold for this one, for example [b]Sprint (Hold) and Dodge on B[/b], or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. On a controller it works as soon as you bind it. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/shared-key.png[/img][/*]
 [*][b]Conflict warning[/b]: when two actions that react at the same time share a key or button, a popup lists the keys, and each entry's side panel names what shares it.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/conflict.png[/img][/*]
-[*][b]Unbinding[/b], which the game doesn't offer: point at any entry and press [b]X[/b] (Square on a controller). It stays unbound across save loads and restarts, and [b]Defaults[/b] brings the key back. [url=https://www.nexusmods.com/cyberpunk2077/mods/11429]Allow Unbound Actions[/url] is no longer needed, and still works alongside.[/*]
+[*][b]Unbinding[/b], which the game doesn't offer: point at any entry and press [b]X[/b] (Square on a controller). It stays unbound across save loads and restarts, and [b]Defaults[/b] brings the key back.[/*]
 [*][b]Controller rebinding[/b], which the game doesn't offer: with a controller in use, the menu shows controller buttons for mod actions, and switches back when you use the keyboard.[/*]
 [*]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla controller buttons too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). Each scheme keeps its own layout. The [b]Control Scheme[/b] screen shows your bindings. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get controller entries too: for example [b]Crouch (Hold) on L3[/b] next to Sprint, or [b]Scan (Toggle) on B[/b] next to Dodge. With Scan (Hold) and Scan (Toggle) on one button, tap is a quick scan and hold switches scanning on or off. Works on all three schemes.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/control-scheme-shared.png[/img][/*]
@@ -53,6 +53,10 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [td]Mods that keep their keys in [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url]'s hub, like the [url=https://www.nexusmods.com/cyberpunk2077/mods/28390]DigitalVixen[/url] mods ([url=https://www.nexusmods.com/cyberpunk2077/mods/29105]Shattered Chrome[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/29101]Chrome Plating[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30508]Injuries[/url] and others)[/td]
 [td]With the mod's own names. Single keys and controller buttons. Kept in sync both ways.[/td]
 [/tr]
+[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
+[td]Vanilla controller buttons (optional file [b]Vanilla Controller Rebinding[/b])[/td]
+[td]One layout per control scheme. After you change the scheme, the controller entries follow from the next launch (a popup says so).[/td]
+[/tr]
 [tr][td][b]⏳ Not yet[/b][/td]
 [td]...[/td]
 [td]If you notice a mod or framework that isn't mentioned here, [b]leave a comment[/b] and I'll look into supporting it.[/td]
@@ -65,13 +69,9 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
 [*][color=#e5be37][b]Controller: an action is listed when exactly one button triggers it. Movement, aiming, attacking and stick axes stay as they are.[/b][/color][/*]
-[*][color=#e5be37][b]A new key combination or shared keyboard key applies after a restart (a popup names the entries), and so does rebinding an action whose key and controller button were both unbound. A shared controller button applies at once, unless the other action on it has a hold of its own or is Sprint (Toggle): then after a restart too. Press the second key within half a second of the first; the first key's own action then waits for its release. The game crashes with more than about 30 combinations in total, so past that an action keeps its key.[/b][/color]
+[*][color=#e5be37][b]Key combinations and shared keyboard keys apply after a restart (a popup names the entries). The game takes about 30 combinations in total.[/b][/color]
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/restart-popup.png[/img][/*]
-[*][color=#e5be37][b]Controller combinations are recorded through XInput (Xbox controllers, others through Steam Input). A PlayStation controller on the game's own support may not record them.[/b][/color][/*]
 [*][color=#e5be37][b]An action sharing a key with a (Hold) action stops reacting to holding that key on that device. A tap still works. On-screen prompts (talk, loot, pickpocket) keep their hold and come first.[/b][/color][/*]
-[*][color=#e5be37][b]After you change the control scheme, the controller entries follow from the next launch (a popup says so).[/b][/color][/*]
-[*][color=#e5be37][b]Each control scheme keeps its own rules: on Classic, Dodge/Dash is a double tap on any button. On Dynamic, Crouch is a hold on the dodge's button and a tap on a button of its own. On Alternative, the quick scan needs Scan (Hold) and Quick Melee on different buttons.[/b][/color][/*]
-[*][color=#e5be37][b]Tap and hold on one button relies on game 2.5. On another game version that part is left out and the hold counts on keyboard and controller alike.[/b][/color][/*]
 [/list]
 [size=4][b]Requirements[/b][/size]
 [list]
