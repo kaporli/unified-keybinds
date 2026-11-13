@@ -35,6 +35,9 @@ void SetController(const std::string& aAction, Keybinds::EventMode aMode);
 // The device in use (the game's InputSchemes.Device): true for a controller.
 void SetDevice(bool aPad);
 
+// A session is about to start or end: the objects' memory is checked again before the next write.
+void Recheck();
+
 // For the log: what was changed or left alone since the last call.
 std::vector<std::string> TakeChanged();
 

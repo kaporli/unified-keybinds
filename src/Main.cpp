@@ -991,6 +991,8 @@ void Native_SetStable(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*
     RED4ext::GetParameter(aFrame, &stable);
     aFrame->code++;
     InputOverrides::SetStable(stable);
+    if (!stable)
+        AcceptedEvents::Recheck();
 }
 
 // Stored keys, for the first time the game applies its bindings.
@@ -1600,7 +1602,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(1, 8, 1);
+    aInfo->version = RED4EXT_V1_SEMVER(1, 8, 2);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

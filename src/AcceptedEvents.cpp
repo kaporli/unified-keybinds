@@ -50,6 +50,7 @@ struct Object
     uint64_t hash;
     uint8_t* object;
     std::vector<int32_t> loaded; // the list the game made, empty until seen
+    bool checked = false;        // its memory was checked since it was made or a session changed
 };
 std::vector<Rule> g_rules;
 std::vector<Object> g_objects; // newest runtime object of each listed action
@@ -140,10 +141,19 @@ void Write(EventList* aList, const std::vector<int32_t>& aContent)
 }
 
 // Keyboard and controller lists as the rule says, and the list in use matching the device.
+// Runs on every device change, many times a second with a gyro mapped to the mouse: the memory check
+// (VirtualQuery, milliseconds each in the game's process) is made once per object, and again after a
+// session started or ended (Recheck).
 void Apply(Object& aObject, const Keybinds::EventRule& aRule)
 {
-    if (aObject.loaded.empty() || !Plausible(aObject.object, static_cast<uint32_t>(aObject.loaded.size()), false))
+    if (aObject.loaded.empty())
         return;
+    if (!aObject.checked)
+    {
+        if (!Plausible(aObject.object, static_cast<uint32_t>(aObject.loaded.size()), false))
+            return;
+        aObject.checked = true;
+    }
     auto keyboard = Content(aObject.loaded, aRule.keyboard);
     auto pad = Content(aObject.loaded, aRule.controller);
     for (int list : {kInUseList, kKeyboardList, kControllerList})
@@ -257,6 +267,7 @@ bool Register_Hook(void* aRegistry, uint64_t aContext, uint64_t aAction, uint64_
                 continue;
             }
             o.loaded.assign(pad->entries, pad->entries + pad->size);
+            o.checked = true;
             g_changed.push_back(rule->action + ": keyboard " + ModeName(rule->keyboard) + ", controller " +
                                 ModeName(rule->controller));
         }
@@ -332,6 +343,13 @@ void AcceptedEvents::SetDevice(bool aPad)
         if (auto rule = Find(o.hash))
             Apply(o, *rule);
     }
+}
+
+void AcceptedEvents::Recheck()
+{
+    std::lock_guard lock(g_mutex);
+    for (auto& o : g_objects)
+        o.checked = false;
 }
 
 void AcceptedEvents::SetBlocked(const std::vector<std::string>& aActions)

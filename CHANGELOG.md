@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2 (2026-11-13)
+
+- Fix: heavy stutter and input delay while the game switched between controller and keyboard and mouse many times a second, for example with a gyro mapped to the mouse through Steam Input (since 1.8.0). A memory check ran on every switch; it now runs once.
+
 ## 1.8.1 (2026-11-11)
 
 - Fix: the scripts did not compile without Mod Settings installed. Mod Settings is optional again, as the requirements say.
