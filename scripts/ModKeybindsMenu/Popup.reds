@@ -42,7 +42,7 @@ protected cb func OnInitialize() -> Bool {
   let noted = false;
   for line in lines {
     let row = new inkCanvas();
-    row.SetSize(820.0, Cast<Float>(size) * 1.9);
+    row.SetSize(820.0, Cast<Float>(size) * 1.6);
     row.Reparent(list, -1);
     let key: String;
     let label = line;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <unordered_map>
 
 namespace
 {
@@ -53,6 +54,7 @@ struct Object
     bool checked = false;        // its memory was checked since it was made or a session changed
 };
 std::vector<Rule> g_rules;
+std::unordered_map<uint64_t, std::size_t> g_ruleIndex; // action hash -> index in g_rules
 std::vector<Object> g_objects; // newest runtime object of each listed action
 std::vector<std::string> g_changed;
 bool g_pad = false; // the device in use is a controller
@@ -171,12 +173,8 @@ void Apply(Object& aObject, const Keybinds::EventRule& aRule)
 
 const Keybinds::EventRule* Find(uint64_t aAction)
 {
-    for (const auto& r : g_rules)
-    {
-        if (r.hash == aAction)
-            return &r.rule;
-    }
-    return nullptr;
+    auto it = g_ruleIndex.find(aAction);
+    return it != g_ruleIndex.end() ? &g_rules[it->second].rule : nullptr;
 }
 
 const char* ModeName(Keybinds::EventMode aMode)
@@ -313,19 +311,24 @@ void AcceptedEvents::Set(const std::vector<Keybinds::EventRule>& aRules)
 {
     std::lock_guard lock(g_mutex);
     g_rules.clear();
+    g_ruleIndex.clear();
     for (const auto& r : aRules)
+    {
+        g_ruleIndex.emplace(RED4ext::CName(r.action.c_str()).hash, g_rules.size());
         g_rules.push_back({RED4ext::CName(r.action.c_str()).hash, r});
+    }
 }
 
-void AcceptedEvents::SetController(const std::string& aAction, Keybinds::EventMode aMode)
+void AcceptedEvents::SetSide(const std::string& aAction, bool aPad, Keybinds::EventMode aMode)
 {
     auto hash = RED4ext::CName(aAction.c_str()).hash;
     std::lock_guard lock(g_mutex);
     for (auto& r : g_rules)
     {
-        if (r.hash != hash || r.rule.controller == aMode)
+        auto& mode = aPad ? r.rule.controller : r.rule.keyboard;
+        if (r.hash != hash || mode == aMode)
             continue;
-        r.rule.controller = aMode;
+        mode = aMode;
         for (auto& o : g_objects)
         {
             if (o.hash == hash)
@@ -340,8 +343,13 @@ void AcceptedEvents::SetDevice(bool aPad)
     g_pad = aPad;
     for (auto& o : g_objects)
     {
-        if (auto rule = Find(o.hash))
-            Apply(o, *rule);
+        // Same events on both devices: the list in use is right for either (also when the game copies a
+        // device's list into it). Not while a prompt blocks the hold: the game's copy would drop that.
+        auto rule = Find(o.hash);
+        if (!rule || (rule->keyboard == rule->controller &&
+                      std::find(g_blocked.begin(), g_blocked.end(), o.hash) == g_blocked.end()))
+            continue;
+        Apply(o, *rule);
     }
 }
 

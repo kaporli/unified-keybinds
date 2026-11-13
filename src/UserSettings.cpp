@@ -144,7 +144,8 @@ fs::path UserSettings::Path()
 }
 
 bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const fs::path& aStore,
-                         const Keybinds::LogFn& aLog, const std::map<std::string, std::string>& aDefaults)
+                         const Keybinds::LogFn& aLog, const std::map<std::string, std::string>& aDefaults,
+                         const std::map<std::string, std::pair<std::string, std::string>>& aMirror)
 {
     auto settings = ReadSettings(aSource);
     if (settings.is_null())
@@ -154,6 +155,7 @@ bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const
     auto store = ReadStore(aStore);
     auto& groups = settings["data"];
     std::size_t moved = 0;
+    std::map<std::pair<std::string, std::string>, std::string> mirrored; // (group, option) -> key
     for (auto it = groups.begin(); it != groups.end();)
     {
         if (!Keybinds::IsModGroup(Text(*it, "group_name")))
@@ -161,7 +163,9 @@ bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const
             ++it;
             continue;
         }
-        if (it->contains("options") && (*it)["options"].is_array())
+        // The game's controller keys are stored when they are set (StoreGamePadKeys), for the scheme in
+        // use then: a write right after a scheme change still holds the previous scheme's keys.
+        if (it->contains("options") && (*it)["options"].is_array() && !IsGamePadGroup(Text(*it, "group_name")))
         {
             auto& target = Target(store, Text(*it, "group_name"));
             for (const auto& opt : (*it)["options"])
@@ -170,6 +174,8 @@ bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const
                 if (name.empty() || !opt.contains("value") || !opt["value"].is_string())
                     continue;
                 target[name] = opt["value"];
+                if (auto m = aMirror.find(name); m != aMirror.end())
+                    mirrored[m->second] = opt["value"].get<std::string>();
                 if (auto d = aDefaults.find(name); d != aDefaults.end())
                 {
                     if (!target.contains(kDefaults) || !target[kDefaults].is_object())
@@ -180,6 +186,20 @@ bool UserSettings::Split(const fs::path& aSource, const fs::path& aTarget, const
         }
         it = groups.erase(it);
         ++moved;
+    }
+
+    // The game's option takes a single key only (it refuses a combination and keeps its key then).
+    for (auto& g : groups)
+    {
+        if (!g.contains("options") || !g["options"].is_array())
+            continue;
+        auto group = Text(g, "group_name");
+        for (auto& opt : g["options"])
+        {
+            auto m = mirrored.find({group, Text(opt, "name")});
+            if (m != mirrored.end() && m->second.rfind("IK_", 0) == 0 && m->second.find('+') == std::string::npos)
+                opt["value"] = m->second;
+        }
     }
 
     // Keys first, so they are never lost with the sections.
@@ -258,7 +278,30 @@ std::map<std::string, std::string> UserSettings::SavedKeys(const fs::path& aStor
 
 void UserSettings::SetScheme(const std::string& aScheme)
 {
+    std::lock_guard lock(g_storeMutex);
     g_scheme = aScheme;
+}
+
+void UserSettings::StoreGamePadKeys(const fs::path& aStore, const std::vector<StoredKey>& aKeys, const Keybinds::LogFn& aLog)
+{
+    std::lock_guard lock(g_storeMutex);
+    auto store = ReadStore(aStore);
+    bool changed = false;
+    for (const auto& k : aKeys)
+    {
+        if (!IsGamePadGroup(k.group) || k.key.empty() || k.key == "None")
+            continue;
+        auto& target = Target(store, k.group);
+        if (!target.contains(kDefaults) || !target[kDefaults].is_object())
+            target[kDefaults] = json::object();
+        if (Text(target, k.name.c_str()) == k.key && Text(target[kDefaults], k.name.c_str()) == k.defaultKey)
+            continue;
+        target[k.name] = k.key;
+        target[kDefaults][k.name] = k.defaultKey;
+        changed = true;
+    }
+    if (changed && !WriteStore(aStore, store))
+        aLog("Could not write " + aStore.string());
 }
 
 void UserSettings::MoveToSchemes(const fs::path& aStore, const std::vector<Keybinds::Action>& aActions,

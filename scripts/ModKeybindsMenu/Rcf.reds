@@ -23,19 +23,6 @@ public abstract class ModKeybindsRcf {
   @if(!ModuleExists("RedscriptConfigFramework"))
   public static func MenuChanged(gi: GameInstance, name: CName, value: CName) -> Void {}
 
-  // RCF stores a single key per entry.
-  public static func IsRcfKey(name: CName) -> Bool {
-    let names = ModKeybindsMenu_Names();
-    let mods = ModKeybindsMenu_RcfMods();
-    let i = 0;
-    while i < ArraySize(names) && i < ArraySize(mods) {
-      if Equals(names[i], name) {
-        return StrLen(mods[i]) > 0;
-      }
-      i += 1;
-    }
-    return false;
-  }
 }
 
 @if(ModuleExists("RedscriptConfigFramework"))

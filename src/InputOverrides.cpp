@@ -1,5 +1,7 @@
 #include "InputOverrides.hpp"
 
+#include <algorithm>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <set>
@@ -135,6 +137,35 @@ bool BindingsUnchanged()
            mapping == g_userMapping;
 }
 
+// Key codes Windows never sends (reserved or unassigned virtual keys), for unbound rows.
+constexpr uint16_t kUnboundKeys[] = {0x0A, 0x0B, 0x0E, 0x0F, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40};
+
+bool IsUnboundKey(uint16_t aKey)
+{
+    return std::find(std::begin(kUnboundKeys), std::end(kUnboundKeys), aKey) != std::end(kUnboundKeys);
+}
+
+// A key for an unbound row that no other row of the collection has; the row's own if it has one already.
+uint16_t UnboundKey(const MappingCollection& aCollection, const Mapping& aRow)
+{
+    auto used = [&](uint16_t aKey) {
+        for (const auto& other : aCollection.mappings)
+        {
+            if (&other != &aRow && other.key == aKey)
+                return true;
+        }
+        return false;
+    };
+    if (IsUnboundKey(aRow.key) && !used(aRow.key))
+        return aRow.key;
+    for (auto k : kUnboundKeys)
+    {
+        if (!used(k))
+            return k;
+    }
+    return 0;
+}
+
 // Returns true if a key changed.
 bool Apply(Manager* aManager)
 {
@@ -163,6 +194,14 @@ bool Apply(Manager* aManager)
                     continue;
                 uint16_t key = entry.original ? original.key : entry.key;
                 uint32_t keyFull = entry.original ? original.keyFull : key;
+                // Unbound: a key no device sends, one no other row of the mapping has, and no key to show.
+                // The game keeps only one of two rows with the same key, so two unbound rows of a mapping
+                // (an action's key and its button) lost one until a restart.
+                if (!entry.original && key == 0)
+                {
+                    key = UnboundKey(*collection, mapping);
+                    keyFull = 0;
+                }
                 if (mapping.key != key || mapping.keyFull != keyFull)
                 {
                     mapping.key = key;
@@ -260,7 +299,18 @@ std::vector<std::string> InputOverrides::LiveButtons(const std::string& aMapping
     if (!collection)
         return out;
     for (const auto& m : collection->mappings)
-        out.push_back(std::to_string(m.key) + "|" + std::to_string(m.keyFull) + "|" + std::to_string(m.overridable));
+    {
+        // ...and the row's raw bytes, for reverse engineering.
+        static const char* hex = "0123456789abcdef";
+        std::string raw;
+        auto bytes = reinterpret_cast<const uint8_t*>(&m);
+        for (std::size_t i = 0; i < sizeof(Mapping); ++i)
+        {
+            raw += hex[bytes[i] >> 4];
+            raw += hex[bytes[i] & 15];
+        }
+        out.push_back(std::to_string(m.key) + "|" + std::to_string(m.keyFull) + "|" + std::to_string(m.overridable) + "|" + raw);
+    }
     return out;
 }
 

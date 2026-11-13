@@ -6,44 +6,66 @@ module ModKeybindsMenu
 // game's button hints. An entry waiting for a key takes only keys of its own kind.
 
 public abstract class ModKeybindsPad {
-  public static func IsPadKey(key: CName) -> Bool {
-    return StrBeginsWith(NameToString(key), "IK_Pad");
-  }
-
-  public static func IsTrigger(key: CName) -> Bool {
-    return Equals(key, n"IK_Pad_LeftTrigger") || Equals(key, n"IK_Pad_RightTrigger");
-  }
-
-  // Default key of an entry, or None.
-  public static func Default(name: CName) -> CName {
-    let names = ModKeybindsMenu_Names();
-    let defaults = ModKeybindsMenu_Defaults();
-    let i = 0;
-    while i < ArraySize(names) {
-      if Equals(names[i], name) {
-        return defaults[i];
-      }
-      i += 1;
-    }
-    return n"None";
-  }
-
   public static func IsPadDevice(value: Uint32) -> Bool {
     return Cast<Int32>(value) % 256 == EnumInt(InputDevice.PAD);
   }
 
-  // Entries of the Key Bindings tab that fit the device.
-  public static func Filter(category: SettingsCategory, padNames: array<CName>, padMode: Bool) -> SettingsCategory {
+  // The control scheme in use changed: the game's controller entries take that scheme's keys (saved, else
+  // its defaults) and apply at once.
+  public static func FollowScheme(settings: ref<UserSettings>) -> Void {
+    let scheme = settings.GetVar(n"/controls/controller", n"InputSchemesMode") as ConfigVarListString;
+    if !IsDefined(scheme) {
+      return;
+    }
+    // Native results go into a variable first: used inline the call doesn't run.
+    let changed = ModKeybindsMenu_SetScheme(scheme.GetValue());
+    if !changed {
+      return;
+    }
+    let names = ModKeybindsMenu_Names();
+    let groups = ModKeybindsMenu_Groups();
+    let saved = ModKeybindsMenu_Saved();
+    let defaults = ModKeybindsMenu_Defaults();
+    let setNames: array<CName>;
+    let setKeys: array<CName>;
+    let i = 0;
+    while i < ArraySize(names) {
+      if StrBeginsWith(NameToString(groups[i]), "/key_bindings/SettingsModPad") {
+        let key = Equals(saved[i], n"None") ? defaults[i] : saved[i];
+        let v = settings.GetVar(groups[i], names[i]) as ConfigVarName;
+        if IsDefined(v) && NotEquals(v.GetValue(), key) {
+          v.SetValue(key);
+        }
+        ArrayPush(setNames, names[i]);
+        ArrayPush(setKeys, key);
+      }
+      i += 1;
+    }
+    if settings.NeedsConfirmation() {
+      settings.ConfirmChanges();
+    }
+    ModKeybindsMenu_SetKeys(setNames, setKeys);
+    new inkMenuScenario().GetSystemRequestsHandler().RequestSaveUserSettings();
+  }
+
+  // True for a game option that has an entry of ours (MKKey_<option>), which takes its place.
+  public static func IsReplaced(name: CName, names: array<CName>) -> Bool {
+    return ArrayContains(names, StringToName("MKKey_" + NameToString(name)));
+  }
+
+  // Entries of the Key Bindings tab that fit the device. The game's options with an entry of ours
+  // are left out.
+  public static func Filter(category: SettingsCategory, padNames: array<CName>, names: array<CName>, padMode: Bool) -> SettingsCategory {
     let out = category;
     ArrayClear(out.options);
     for option in category.options {
-      if Equals(ArrayContains(padNames, option.GetName()), padMode) {
+      if Equals(ArrayContains(padNames, option.GetName()), padMode) && !ModKeybindsPad.IsReplaced(option.GetName(), names) {
         ArrayPush(out.options, option);
       }
     }
     ArrayClear(out.subcategories);
     for sub in category.subcategories {
-      let kept = ModKeybindsPad.Filter(sub, padNames, padMode);
+      let kept = ModKeybindsPad.Filter(sub, padNames, names, padMode);
       if ArraySize(kept.options) > 0 || ArraySize(kept.subcategories) > 0 {
         ArrayPush(out.subcategories, kept);
       }
@@ -53,15 +75,19 @@ public abstract class ModKeybindsPad {
 }
 
 // Reports the device in use to the plugin: hold-only controller buttons wait for the hold only
-// while a controller is in use, keyboard keys of the same action don't.
+// while a controller is in use, keyboard keys of the same action don't. Also follows the control scheme.
 public class ModKeybindsDevice extends ScriptableSystem {
   private let m_callback: ref<CallbackHandle>;
+  private let m_scheme: ref<ModKeybindsSchemeListener>;
 
   private func OnAttach() -> Void {
     let defs = GetAllBlackboardDefs().InputSchemes;
     let bb = GameInstance.GetBlackboardSystem(this.GetGameInstance()).Get(defs);
     ModKeybindsMenu_SetDevice(ModKeybindsPad.IsPadDevice(bb.GetUint(defs.Device)));
     this.m_callback = bb.RegisterListenerUint(defs.Device, this, n"OnDevice");
+    this.m_scheme = new ModKeybindsSchemeListener();
+    this.m_scheme.Start(this.GetGameInstance());
+    ModKeybindsPad.FollowScheme(GameInstance.GetSettingsSystem(this.GetGameInstance()));
   }
 
   private func OnDetach() -> Void {
@@ -75,6 +101,22 @@ public class ModKeybindsDevice extends ScriptableSystem {
   protected cb func OnDevice(value: Uint32) -> Bool {
     ModKeybindsMenu_SetDevice(ModKeybindsPad.IsPadDevice(value));
     return true;
+  }
+}
+
+// Watches the control scheme option (Settings > Controls).
+public class ModKeybindsSchemeListener extends ConfigVarListener {
+  private let m_game: GameInstance;
+
+  public func Start(game: GameInstance) -> Void {
+    this.m_game = game;
+    this.Register(n"/controls/controller");
+  }
+
+  protected cb func OnVarModified(groupPath: CName, varName: CName, varType: ConfigVarType, reason: ConfigChangeReason) {
+    if Equals(reason, ConfigChangeReason.Accepted) && Equals(varName, n"InputSchemesMode") {
+      ModKeybindsPad.FollowScheme(GameInstance.GetSettingsSystem(this.m_game));
+    }
   }
 }
 
@@ -98,18 +140,11 @@ protected cb func OnInitialize() -> Bool {
   return result;
 }
 
-// Crouch, dodge and quick melee take their controller buttons from the control scheme. The
-// controller entries are made at startup, for the scheme in use then.
+// Crouch, dodge and quick melee take their controller buttons from the control scheme: the entries
+// follow a scheme changed here (also in the main menu, before a session's systems run).
 @addMethod(SettingsMainGameController)
 protected cb func OnModKeybindsScheme(e: ref<ModKeybindsSchemeEvent>) -> Bool {
-  let scheme = this.m_settings.GetVar(n"/controls/controller", n"InputSchemesMode") as ConfigVarListString;
-  if IsDefined(scheme) {
-    let value = scheme.GetValue();
-    let changed = ModKeybindsMenu_SchemeNotice(value);
-    if changed {
-      this.ModKeybindsShowPopup("The controller bindings in Key Bindings follow the new control scheme after you restart the game.");
-    }
-  }
+  ModKeybindsPad.FollowScheme(this.m_settings);
   return true;
 }
 
@@ -163,7 +198,8 @@ private func PopulateCategorySettingsOptions(idx: Int32) -> Void {
   }
   let all = this.m_data[i];
   let padNames = ModKeybindsMenu_PadNames();
-  this.m_data[i] = ModKeybindsPad.Filter(all, padNames, this.m_modKeybindsPadMode);
+  let names = ModKeybindsMenu_Names();
+  this.m_data[i] = ModKeybindsPad.Filter(all, padNames, names, this.m_modKeybindsPadMode);
   wrappedMethod(idx);
   this.m_data[i] = all;
   // Keys doing two things at once, listed when Key Bindings opens and they changed since the last time.
@@ -184,12 +220,9 @@ protected cb func OnKeyBindingEvent(e: ref<KeyBindingEvent>) -> Bool {
   if this.IsListeningForInput() && NotEquals(e.keyName, n"IK_Escape") {
     let v = this.m_SettingsEntry as ConfigVarName;
     // Native results go into a variable first: used inline as an argument the call doesn't run.
-    let padNames = ModKeybindsMenu_PadNames();
-    let padEntry = IsDefined(v) && ArrayContains(padNames, v.GetName());
-    let wrongKind = NotEquals(ModKeybindsPad.IsPadKey(e.keyName), padEntry);
-    if padEntry && !wrongKind {
-      wrongKind = NotEquals(ModKeybindsPad.IsTrigger(e.keyName), ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName())));
-    }
+    let name = IsDefined(v) ? v.GetName() : n"";
+    let fits = ModKeybindsMenu_Fits(name, e.keyName);
+    let wrongKind = !fits;
     // The game stops listening once it hands out a key: start again for the next one.
     if wrongKind {
       this.StopListeningForInput();

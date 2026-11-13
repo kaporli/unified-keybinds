@@ -146,7 +146,15 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile, const std::str
             std::string name = mapping.attribute("name").as_string();
             std::string id = key.attribute("id").as_string();
             auto group = groups.find(id);
-            out.emplace(name, Button{id, order++, {name}, group != groups.end() ? group->second : std::vector<std::string>{}});
+            auto& b = out.emplace(name, Button{id, order++, {name}, group != groups.end() ? group->second : std::vector<std::string>{}})
+                          .first->second;
+            // Its controller button, as for an action with overridableUI: it gets a controller entry.
+            for (auto other : mapping.children("button"))
+            {
+                std::string padId = other.attribute("id").as_string();
+                if (IsPadButton(padId, groups))
+                    b.pads[padId] = {name};
+            }
             continue;
         }
         for (auto button : mapping.children("button"))
@@ -181,7 +189,10 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile, const std::str
             for (auto other : padSource.children("button"))
             {
                 std::string padId = other.attribute("id").as_string();
-                if (other.attribute("overridableUI") || !IsPadButton(padId, groups))
+                // A button with no overridableUI, or with the action's own (the mod gave the key and the
+                // button one name): the action's controller button.
+                std::string own = other.attribute("overridableUI").as_string();
+                if ((!own.empty() && own != name) || !IsPadButton(padId, groups))
                     continue;
                 auto& maps = it->second.pads[padId];
                 if (std::find(maps.begin(), maps.end(), mapName) == maps.end())
@@ -580,19 +591,6 @@ std::vector<PadGroup> PadGroups(const Button& aButton, const Uses& aUses,
     return out;
 }
 
-// "IK_Pad_DigitDown" -> "D-Pad Down", Xbox names as in the game's own controller labels.
-std::string ButtonName(const std::string& aButton)
-{
-    static const std::map<std::string, std::string> names = {
-        {"IK_Pad_A_CROSS", "A"}, {"IK_Pad_B_CIRCLE", "B"}, {"IK_Pad_X_SQUARE", "X"}, {"IK_Pad_Y_TRIANGLE", "Y"},
-        {"IK_Pad_DigitUp", "D-Pad Up"}, {"IK_Pad_DigitDown", "D-Pad Down"}, {"IK_Pad_DigitLeft", "D-Pad Left"},
-        {"IK_Pad_DigitRight", "D-Pad Right"}, {"IK_Pad_LeftShoulder", "LB"}, {"IK_Pad_RightShoulder", "RB"},
-        {"IK_Pad_LeftTrigger", "LT"}, {"IK_Pad_RightTrigger", "RT"}, {"IK_Pad_LeftThumb", "LS"},
-        {"IK_Pad_RightThumb", "RS"}, {"IK_Pad_Start", "Menu"}, {"IK_Pad_Back_Select", "View"}};
-    auto it = names.find(aButton);
-    return it != names.end() ? it->second : Keybinds::Humanize(aButton.substr(7));
-}
-
 // Label suffix for each group: none for a single group or the first on-foot one, else where it applies,
 // or the button too when two groups apply in the same place.
 std::vector<std::string> Suffixes(const std::vector<PadGroup>& aGroups)
@@ -609,7 +607,7 @@ std::vector<std::string> Suffixes(const std::vector<PadGroup>& aGroups)
         else if (seen[cat] == 1)
             out.push_back(cat);
         else
-            out.push_back((cat.empty() ? "" : cat + ", ") + ButtonName(aGroups[i].button));
+            out.push_back((cat.empty() ? "" : cat + ", ") + Keybinds::KeyText(aGroups[i].button));
     }
     return out;
 }
@@ -685,19 +683,27 @@ std::string Keybinds::StartKey(const Action& aAction, const std::map<std::string
     return !aAction.current.empty() ? aAction.current : aAction.defaultKey;
 }
 
+bool Keybinds::TakesCombo(const Action& aAction)
+{
+    bool trigger = aAction.defaultKey == "IK_Pad_LeftTrigger" || aAction.defaultKey == "IK_Pad_RightTrigger";
+    return aAction.buttonMapping && aAction.name.rfind("NSUI_", 0) != 0 && aAction.modId.empty() && !(aAction.pad && trigger);
+}
+
 bool Keybinds::Fits(const Action& aAction, const std::string& aKey)
 {
-    if (!aAction.pad || aKey == kUnbound)
+    if (aKey == kUnbound || aKey == aAction.defaultKey)
         return true;
     auto trigger = [](const std::string& k) { return k == "IK_Pad_LeftTrigger" || k == "IK_Pad_RightTrigger"; };
-    // A controller combination: two buttons, for a button entry.
+    // A key of the entry's own kind: a controller button for a controller entry, else a keyboard or mouse key.
+    auto own = [&](const std::string& k) { return k.rfind("IK_", 0) == 0 && IsPad(k) == aAction.pad; };
+    // A combination: two keys of the entry's kind, no triggers (an axis to the game). Native Settings
+    // UI and RCF read a single key.
     if (auto plus = aKey.find('+'); plus != std::string::npos)
     {
         auto held = aKey.substr(0, plus), pressed = aKey.substr(plus + 1);
-        return !trigger(aAction.defaultKey) && held.rfind("IK_Pad", 0) == 0 && pressed.rfind("IK_Pad", 0) == 0 &&
-               !trigger(held) && !trigger(pressed);
+        return TakesCombo(aAction) && own(held) && own(pressed) && held != pressed && !trigger(held) && !trigger(pressed);
     }
-    return aKey.rfind("IK_Pad", 0) == 0 && trigger(aKey) == trigger(aAction.defaultKey);
+    return own(aKey) && (!aAction.pad || trigger(aKey) == trigger(aAction.defaultKey));
 }
 
 std::string Keybinds::GroupPath(const Action& aAction)
@@ -706,7 +712,9 @@ std::string Keybinds::GroupPath(const Action& aAction)
         return aAction.group;
     // "Pad..." is taken by the game's controller sections (SettingsModPad<section>).
     auto slug = Slug(aAction.section);
-    return kGroupPrefix + (slug.rfind("Pad", 0) == 0 ? "Mod" + slug : slug);
+    // "Pad..." and "Key..." are taken by the sections of the game's actions (SettingsModPad<section>,
+    // SettingsModKey<section>).
+    return kGroupPrefix + (slug.rfind("Pad", 0) == 0 || slug.rfind("Key", 0) == 0 ? "Mod" + slug : slug);
 }
 
 std::string Keybinds::SectionKey(const Action& aAction)
@@ -723,6 +731,23 @@ std::string Keybinds::SectionText(const Action& aAction)
     return "Mod: " + aAction.section;
 }
 
+std::string Keybinds::KeyText(const std::string& aKey)
+{
+    if (auto plus = aKey.find('+'); plus != std::string::npos)
+        return KeyText(aKey.substr(0, plus)) + " + " + KeyText(aKey.substr(plus + 1));
+    static const std::map<std::string, std::string> names = {
+        {"IK_Pad_A_CROSS", "A"}, {"IK_Pad_B_CIRCLE", "B"}, {"IK_Pad_X_SQUARE", "X"}, {"IK_Pad_Y_TRIANGLE", "Y"},
+        {"IK_Pad_DigitUp", "D-Pad Up"}, {"IK_Pad_DigitDown", "D-Pad Down"}, {"IK_Pad_DigitLeft", "D-Pad Left"},
+        {"IK_Pad_DigitRight", "D-Pad Right"}, {"IK_Pad_LeftShoulder", "LB"}, {"IK_Pad_RightShoulder", "RB"},
+        {"IK_Pad_LeftTrigger", "LT"}, {"IK_Pad_RightTrigger", "RT"}, {"IK_Pad_LeftThumb", "LS"},
+        {"IK_Pad_RightThumb", "RS"}, {"IK_Pad_Start", "Menu"}, {"IK_Pad_Back_Select", "View"}};
+    if (auto it = names.find(aKey); it != names.end())
+        return it->second;
+    if (aKey.rfind("IK_Pad_", 0) == 0)
+        return Humanize(aKey.substr(7));
+    return aKey.rfind("IK_", 0) == 0 ? aKey.substr(3) : aKey;
+}
+
 std::string Keybinds::Humanize(const std::string& aText)
 {
     auto words = Words(aText);
@@ -731,20 +756,8 @@ std::string Keybinds::Humanize(const std::string& aText)
     return Join(words);
 }
 
-namespace
-{
-std::vector<Keybinds::Action> g_holdOptions;
-}
-
-std::vector<Keybinds::Action> Keybinds::WithHoldOptions(const std::vector<Action>& aActions)
-{
-    auto out = aActions;
-    out.insert(out.end(), g_holdOptions.begin(), g_holdOptions.end());
-    return out;
-}
-
 std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std::string& aBaseOptions,
-                                                const std::string& aScheme, bool aVanillaPads, const LogFn& aLog)
+                                                const std::string& aScheme, const LogFn& aLog)
 {
     Copies copies;
     auto merged = ReadMappings(aRoot / "r6" / "cache" / "inputUserMappings.xml", aScheme, &copies);
@@ -781,6 +794,16 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         }
     }
     bool showNavigation = ShowNavigation();
+    // Where a keyboard entry acts, as for the controller entries: empty on foot, else "Vehicle", "Menus", ...
+    auto PlaceOf = [&](const std::vector<std::string>& aMappings) {
+        std::set<std::string> contexts;
+        for (const auto& m : aMappings)
+        {
+            if (auto use = uses.find(m); use != uses.end())
+                contexts.insert(use->second.contexts.begin(), use->second.contexts.end());
+        }
+        return contexts.empty() ? std::string() : Category(contexts);
+    };
     // A mapping's controller button belongs to one entry: vanilla ones first, then mods.
     std::set<std::pair<std::string, std::string>> claimed;
     auto padEntries = [&](const Button& aButton, const std::string& aName, const Action& aBase) {
@@ -838,9 +861,11 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         return out;
     };
 
+    std::vector<Action> vanillaKeys;
     std::vector<Action> vanillaPads;
-    // Vanilla controller buttons: the game's key binding entries take keyboard keys only, so each
-    // gets a controller entry in a section of ours named like the game's.
+    // The game's actions: each gets a keyboard entry and a controller entry in sections of ours named
+    // like the game's, so both devices are set, stored and applied the same way. The game's own
+    // entries take keyboard keys only and no combinations.
     if (!baseOptions.is_discarded() && baseOptions.contains("groups") && baseOptions.contains("options"))
     {
         std::vector<std::pair<int, json>> groups;
@@ -885,8 +910,49 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
                                 a.labelKeys.push_back(k.get<std::string>());
                         }
                     }
-                    a.group = std::string(kGroupPrefix) + "Pad" + Slug(a.section);
                     a.sectionKey = g.value("display_name", a.section);
+                    a.gameOption = name;
+                    a.gameGroup = path;
+                    if (IsShareVariant(name))
+                    {
+                        a.holdOption = name;
+                        // The action the option names: sprintHold > Sprint, visionHold > VisionHold,
+                        // visionToggle > VisionToggle. A mapping can feed others too (Sprint_Button:
+                        // SprintMultitap, Ping).
+                        auto stem = Lower(name.substr(0, name.size() - (IsHoldVariant(name) ? 4 : 6)));
+                        for (const auto& m : it->second.mappings)
+                        {
+                            auto use = uses.find(m);
+                            if (use == uses.end())
+                                continue;
+                            for (const auto& act : use->second.actions)
+                            {
+                                auto lower = Lower(act);
+                                if ((lower == stem || lower == Lower(name)) &&
+                                    std::find(a.gameActions.begin(), a.gameActions.end(), act) == a.gameActions.end())
+                                    a.gameActions.push_back(act);
+                            }
+                        }
+                        // Its key can be shared when the long press can be added: not for an action
+                        // with accepted events of its own (Scanner (Hold)).
+                        a.holdShare = !a.gameActions.empty() &&
+                                      std::none_of(a.gameActions.begin(), a.gameActions.end(),
+                                                   [&](const auto& act) { return ownEvents.contains(act); });
+                    }
+                    // The keyboard entry: the option's keyboard key (or the id of its key combination).
+                    if (!it->second.id.empty() && !IsPad(it->second.id))
+                    {
+                        Action k = a;
+                        k.name = kKeyPrefix + name;
+                        k.group = std::string(kGroupPrefix) + "Key" + Slug(a.section);
+                        k.defaultKey = it->second.id;
+                        k.combo = it->second.combo;
+                        k.mappings = it->second.mappings;
+                        k.buttonMapping = it->second.type == "Button";
+                        k.place = PlaceOf(k.mappings);
+                        vanillaKeys.push_back(std::move(k));
+                    }
+                    a.group = std::string(kGroupPrefix) + "Pad" + Slug(a.section);
                     auto pads = padEntries(it->second, name, a);
                     // A hold variant (Sprint (Hold), Crouch (Hold)) or Scan (Toggle) without a controller
                     // button gets an unbound entry: the keyboard has both variants, the controller should
@@ -907,31 +973,12 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
                     }
                     for (auto& p : pads)
                     {
-                        if (IsShareVariant(name) && p.place.empty())
+                        // Sharing is for the entry on foot.
+                        if (!p.place.empty())
                         {
-                            p.holdOption = name;
-                            // The action the option names: sprintHold > Sprint, visionHold > VisionHold,
-                            // visionToggle > VisionToggle. A mapping can feed others too (Sprint_Button:
-                            // SprintMultitap, Ping).
-                            auto stem = Lower(name.substr(0, name.size() - (IsHoldVariant(name) ? 4 : 6)));
-                            for (const auto& m : it->second.mappings)
-                            {
-                                auto use = uses.find(m);
-                                if (use == uses.end())
-                                    continue;
-                                for (const auto& act : use->second.actions)
-                                {
-                                    auto lower = Lower(act);
-                                    if ((lower == stem || lower == Lower(name)) &&
-                                        std::find(p.gameActions.begin(), p.gameActions.end(), act) == p.gameActions.end())
-                                        p.gameActions.push_back(act);
-                                }
-                            }
-                            // Its button can be shared when the long press can be added: not for an action
-                            // with accepted events of its own (Scanner (Hold)).
-                            p.holdShare = !p.gameActions.empty() &&
-                                          std::none_of(p.gameActions.begin(), p.gameActions.end(),
-                                                       [&](const auto& act) { return ownEvents.contains(act); });
+                            p.holdOption.clear();
+                            p.gameActions.clear();
+                            p.holdShare = false;
                         }
                         vanillaPads.push_back(std::move(p));
                     }
@@ -990,6 +1037,9 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
             base.labelKey = LabelKey(action);
             pads = padEntries(button, name, base);
         }
+        action.buttonMapping = button.type == "Button";
+        if (!pad)
+            action.place = PlaceOf(action.mappings);
         found.push_back({button, std::move(action)});
         for (auto& p : pads)
             found.push_back({button, std::move(p)});
@@ -1002,21 +1052,53 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
         return a.first.order < b.first.order;
     });
 
-    // Without them, they still claim their buttons first, so the mod entries are the same either way.
-    std::vector<Action> out;
-    // The (Hold) bindings that may share their key are known from their controller entries. Without
-    // the vanilla controller entries they are kept aside, so keyboard keys can still be shared.
-    g_holdOptions.clear();
-    if (!aVanillaPads)
+    // An entry following the control scheme is in the copies of all three schemes, so a scheme changed
+    // during play takes its key: the button of each copy, and the scheme's default.
     {
-        for (const auto& p : vanillaPads)
+        pugi::xml_document doc;
+        std::map<std::string, std::string> padButton; // mapping -> its first controller button
+        if (doc.load_file((aRoot / "r6" / "cache" / "inputUserMappings.xml").c_str()))
         {
-            if (p.holdShare)
-                g_holdOptions.push_back(p);
+            for (auto mapping : doc.child("bindings").children("mapping"))
+            {
+                for (auto button : mapping.children("button"))
+                {
+                    std::string id = button.attribute("id").as_string();
+                    if (IsPad(id))
+                    {
+                        padButton.emplace(mapping.attribute("name").as_string(), id);
+                        break;
+                    }
+                }
+            }
+        }
+        for (auto& p : vanillaPads)
+        {
+            if (!p.scheme)
+                continue;
+            auto own = p.mappings;
+            for (const auto& [mapping, copy] : copies)
+            {
+                if (std::find(own.begin(), own.end(), copy) == own.end())
+                    continue;
+                for (const char* s : {"Legacy", "Agile", "Alternative"})
+                {
+                    auto other = mapping + "_" + s;
+                    auto button = padButton.find(other);
+                    if (button == padButton.end())
+                        continue;
+                    p.schemeButtons[other] = button->second;
+                    p.schemeDefaults.emplace(s, button->second);
+                    if (std::find(p.mappings.begin(), p.mappings.end(), other) == p.mappings.end())
+                        p.mappings.push_back(other);
+                }
+            }
         }
     }
-    if (aVanillaPads)
-        out = std::move(vanillaPads);
+
+    // The game's actions first (keyboard, then controller), then the mods'.
+    std::vector<Action> out = std::move(vanillaKeys);
+    out.insert(out.end(), std::make_move_iterator(vanillaPads.begin()), std::make_move_iterator(vanillaPads.end()));
     for (auto& [button, action] : found)
         out.push_back(std::move(action));
     return out;
@@ -1029,8 +1111,7 @@ constexpr std::size_t kMaxCombos = 30;
 } // namespace
 
 std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<Action>& aActions,
-                                     const std::map<std::string, std::string>& aSaved,
-                                     const std::map<std::string, std::string>& aHoldKeys, const LogFn& aLog)
+                                     const std::map<std::string, std::string>& aSaved, const LogFn& aLog)
 {
     pugi::xml_document doc;
     if (!doc.load_file(aMerged.c_str()))
@@ -1045,13 +1126,20 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     std::set<std::string> names;
     // Controller entries of ours: mapping -> (button id -> entry name).
     std::map<std::string, std::map<std::string, std::string>> padNames;
+    // Keyboard entries of ours for the game's options: option -> entry name.
+    std::map<std::string, std::string> keyNames;
     for (const auto& a : aActions)
     {
         names.insert(a.name);
+        if (a.name.rfind(kKeyPrefix, 0) == 0)
+            keyNames[a.gameOption] = a.name;
         if (a.name.rfind(kPadPrefix, 0) == 0)
         {
             for (const auto& m : a.mappings)
-                padNames[m][a.defaultKey] = a.name;
+            {
+                auto copy = a.schemeButtons.find(m);
+                padNames[m][copy != a.schemeButtons.end() ? copy->second : a.defaultKey] = a.name;
+            }
         }
     }
     // Controller entries without a default button get a row of their own, so the key binding
@@ -1077,10 +1165,11 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     {
         for (auto button : mapping.children("button"))
         {
-            auto hold = aHoldKeys.find(button.attribute("overridableUI").as_string());
-            if (hold != aHoldKeys.end() && hold->second != button.attribute("id").as_string())
+            // A keyboard button of a game option is set through our entry: the option no longer reaches it.
+            auto key = keyNames.find(button.attribute("overridableUI").as_string());
+            if (key != keyNames.end() && !IsPad(button.attribute("id").as_string()))
             {
-                button.attribute("id") = hold->second.c_str();
+                button.attribute("overridableUI") = key->second.c_str();
                 changed = true;
             }
         }
@@ -1105,9 +1194,14 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
             for (auto button : mapping.children("button"))
             {
                 auto pad = pads->second.find(button.attribute("id").as_string());
-                if (pad != pads->second.end() && !button.attribute("overridableUI"))
+                // Also a button carrying the action's own name: the controller entry gets its own.
+                std::string own = button.attribute("overridableUI").as_string();
+                if (pad != pads->second.end() && (own.empty() || pad->second.rfind(std::string(kPadPrefix) + own, 0) == 0))
                 {
-                    button.append_attribute("overridableUI") = pad->second.c_str();
+                    if (own.empty())
+                        button.append_attribute("overridableUI") = pad->second.c_str();
+                    else
+                        button.attribute("overridableUI") = pad->second.c_str();
                     changed = true;
                 }
             }
@@ -1239,46 +1333,48 @@ std::map<std::string, std::map<std::string, std::string>> Keybinds::GameKeys(con
 }
 
 std::vector<Keybinds::HoldOnly> Keybinds::HoldOnlyActions(const std::vector<Action>& aActions,
-                                                          const std::map<std::string, std::string>& aSaved,
-                                                          const fs::path& aUserSettings, bool aAll)
+                                                          const std::map<std::string, std::string>& aSaved, bool aAll,
+                                                          const fs::path& aContexts)
 {
-    auto keyboard = GameKeys(aUserSettings);
-
-    std::vector<HoldOnly> out;
+    // One per (Hold) option, its entries of both devices together.
+    std::map<std::string, std::pair<HoldOnly, std::vector<std::string>>> byOption; // option -> (setup, game actions)
+    std::set<std::string> share;
     for (const auto& a : aActions)
     {
         if (a.holdOption.empty() || a.gameActions.empty())
             continue;
-        HoldOnly h;
-        auto padKey = StartKey(a, aSaved);
-        if (padKey != kUnbound && padKey != "None")
-        {
-            for (const auto& b : aActions)
-            {
-                if (&b == &a || !b.pad || !b.place.empty() || StartKey(b, aSaved) != padKey)
-                    continue;
-                h.controller = true;
-                h.padMappings.insert(h.padMappings.end(), b.mappings.begin(), b.mappings.end());
-            }
-        }
-        for (const auto& [group, options] : keyboard)
-        {
-            auto own = options.find(a.holdOption);
-            if (own == options.end() || own->second == kUnbound || own->second == "None")
-                continue;
-            for (const auto& [name, key] : options)
-            {
-                if (name == a.holdOption || key != own->second)
-                    continue;
-                h.keyboard = true;
-                h.keyOptions.push_back(name);
-            }
-        }
-        if (!h.controller && !h.keyboard && !(aAll && a.holdShare))
-            continue;
+        auto& [h, acts] = byOption[a.holdOption];
         h.option = a.holdOption;
-        h.padEntry = a.name;
         for (const auto& act : a.gameActions)
+        {
+            if (std::find(acts.begin(), acts.end(), act) == acts.end())
+                acts.push_back(act);
+        }
+        if (a.holdShare)
+            share.insert(a.holdOption);
+        auto& side = h.Side(a.pad);
+        side.entry = a.name;
+        auto key = StartKey(a, aSaved);
+        if (key == kUnbound || key == "None")
+            continue;
+        for (const auto& b : aActions)
+        {
+            if (&b == &a || b.pad != a.pad || !b.place.empty() || StartKey(b, aSaved) != key)
+                continue;
+            // Only an action that can react at the same time (one context, one section of the game).
+            if (!aContexts.empty() && !ActTogether(aContexts, a.mappings, b.mappings))
+                continue;
+            side.shared = true;
+            side.mappings.insert(side.mappings.end(), b.mappings.begin(), b.mappings.end());
+        }
+    }
+    std::vector<HoldOnly> out;
+    for (auto& [option, entry] : byOption)
+    {
+        auto& [h, acts] = entry;
+        if (!h.keyboard.shared && !h.controller.shared && !(aAll && share.contains(option)))
+            continue;
+        for (const auto& act : acts)
         {
             h.action = act;
             out.push_back(h);
@@ -1287,8 +1383,7 @@ std::vector<Keybinds::HoldOnly> Keybinds::HoldOnlyActions(const std::vector<Acti
     return out;
 }
 
-std::string Keybinds::MarkHoldOnly(const fs::path& aMerged, const fs::path& aMappings,
-                                   const std::vector<HoldOnly>& aHoldOnly, std::vector<EventRule>& aRules,
+std::string Keybinds::MarkHoldOnly(const fs::path& aMerged, const std::vector<HoldOnly>& aHoldOnly, bool aLive, std::vector<EventRule>& aRules,
                                    const LogFn& aLog)
 {
     aRules.clear();
@@ -1368,9 +1463,21 @@ std::string Keybinds::MarkHoldOnly(const fs::path& aMerged, const fs::path& aMap
         }
         return false;
     };
+    // In one section of the game (its Settings contexts: on foot, vehicle, menus, ...), as the menu's
+    // conflict check counts them: an action of the menus never shares a key with one on foot.
+    std::vector<std::set<std::string>> sections;
+    for (const auto& [name, node] : contexts)
+    {
+        if (name.rfind("Settings", 0) != 0)
+            continue;
+        std::set<std::string> seen;
+        sections.push_back(collect(name, seen));
+    }
+    auto sameSection = [&](const std::string& a, const std::string& b) {
+        return std::any_of(sections.begin(), sections.end(), [&](const auto& s) { return s.contains(a) && s.contains(b); });
+    };
 
     // The mappings of the game's key binding options.
-    auto optionMappings = OptionMappings(aMappings);
 
     static const char* kHoldEvents[] = {"BUTTON_HOLD_PROGRESS", "BUTTON_HOLD_COMPLETE", "PATTERN_HOLD_PROGRESS",
                                         "PATTERN_HOLD_PASSED"};
@@ -1427,85 +1534,85 @@ std::string Keybinds::MarkHoldOnly(const fs::path& aMerged, const fs::path& aMap
         lists.emplace(h.action, events);
         changed = true;
         auto& own = rule(h.action);
-        own.keyboard = h.keyboard ? EventMode::Keep : EventMode::All;
-        own.controller = h.controller ? EventMode::Keep : EventMode::All;
-        aLog("Hold-only: " + h.action + " (controller " + (h.controller ? "yes" : "no") + ", keyboard " +
-             (h.keyboard ? "yes" : "no") + ")");
+        own.keyboard = h.keyboard.shared ? EventMode::Keep : EventMode::All;
+        own.controller = h.controller.shared ? EventMode::Keep : EventMode::All;
+        aLog("Hold-only: " + h.action + " (controller " + (h.controller.shared ? "yes" : "no") + ", keyboard " +
+             (h.keyboard.shared ? "yes" : "no") + ")");
 
-        // The actions it shares a button with give up the hold there.
-        auto giveUpHold = [&](const std::vector<std::string>& aMaps, bool aController) {
-            for (const auto& m : aMaps)
+        // The actions it shares a key with give up the hold on that device. Sprint (Toggle) starts on the
+        // press, which the game sends before the hold completes (holding would sprint, then slide): it
+        // gets nothing from that device, and the scripts toggle sprint when the key is let go before the
+        // hold (Tap.reds). With aLive every action that could share the key gets this set up now, at its
+        // own events while unshared, so a key shared later counts at once (UpdateHoldOnly switches it).
+        // Prompt actions keep their hold: the (Hold) action gives way while their prompt shows.
+        auto setUp = [&](const std::string& aOther) -> EventRule* {
+            bool holdOnly = std::any_of(aHoldOnly.begin(), aHoldOnly.end(), [&](const auto& x) { return x.action == aOther; });
+            if (aOther == h.action || holdOnly || !activeTogether(aOther, h.action) || !sameSection(aOther, h.action))
+                return nullptr;
+            bool sprint = aOther == "ToggleSprint";
+            bool ownList = false;
+            bool reacts = reactsToHold(aOther, ownList);
+            if (!sprint && (!reacts || promptAction(aOther)))
+                return nullptr;
+            bool known = std::any_of(aRules.begin(), aRules.end(), [&](const auto& r) { return r.action == aOther; });
+            auto& r = rule(aOther);
+            if (!known)
             {
-                auto fed = feeds.find(m);
-                if (fed == feeds.end())
-                    continue;
-                for (const auto& other : fed->second)
+                // Without a list of its own: one with every event but the hold ones, taken as every event
+                // while unshared.
+                if (sprint ? !lists.contains(aOther) : !ownList)
                 {
-                    // Another hold-only action wants the hold too: both start on a long press.
-                    bool ownList = false;
-                    bool holdOnly = std::any_of(aHoldOnly.begin(), aHoldOnly.end(), [&](const auto& x) { return x.action == other; });
-                    // Sprint (Toggle) starts on the press, which the game sends before the hold completes
-                    // (holding would sprint, then slide). It gets nothing from this device; the scripts
-                    // toggle sprint when the button is let go before the hold (Tap.reds).
-                    if (other == "ToggleSprint" && !holdOnly && activeTogether(other, h.action))
-                    {
-                        bool known = std::any_of(aRules.begin(), aRules.end(), [&](const auto& r) { return r.action == other; });
-                        auto& r = rule(other);
-                        if (!known && !lists.contains(other))
-                        {
-                            auto list = bindings.append_child("acceptedEvents");
-                            list.append_attribute("action") = other.c_str();
-                            for (auto e : kOtherEvents)
-                                list.append_child("event").append_attribute("name") = e;
-                            lists.emplace(other, list);
-                            changed = true;
-                            r.keyboard = r.controller = EventMode::All;
-                        }
-                        (aController ? r.controller : r.keyboard) = EventMode::None;
-                        aLog("Hold-only: " + other + " gets no event from the " + (aController ? "controller" : "keyboard") +
-                             " (shares a button with " + h.action + "): a tap toggles it in the scripts");
-                        continue;
-                    }
-                    if (holdOnly || !activeTogether(other, h.action) || !reactsToHold(other, ownList))
-                        continue;
-                    if (promptAction(other))
-                    {
-                        aLog("Hold-only: " + other + " keeps its hold (prompt action): " + h.action +
-                             " gives way while its prompt shows");
-                        continue;
-                    }
-                    bool known = std::any_of(aRules.begin(), aRules.end(), [&](const auto& r) { return r.action == other; });
-                    auto& r = rule(other);
-                    if (!known)
-                    {
-                        // Without a list of its own: one with every event but the hold ones, taken
-                        // as every event on the other device.
-                        if (!ownList)
-                        {
-                            auto list = bindings.append_child("acceptedEvents");
-                            list.append_attribute("action") = other.c_str();
-                            for (auto e : kOtherEvents)
-                                list.append_child("event").append_attribute("name") = e;
-                            lists.emplace(other, list);
-                            changed = true;
-                            r.keyboard = r.controller = EventMode::All;
-                        }
-                    }
-                    (aController ? r.controller : r.keyboard) = EventMode::NoHold;
-                    aLog("Hold-only: " + other + " gives up the hold on the " + (aController ? "controller" : "keyboard") +
-                         " (shares a button with " + h.action + ")");
+                    auto list = bindings.append_child("acceptedEvents");
+                    list.append_attribute("action") = aOther.c_str();
+                    for (auto e : kOtherEvents)
+                        list.append_child("event").append_attribute("name") = e;
+                    lists.emplace(aOther, list);
+                    changed = true;
+                    r.keyboard = r.controller = r.keyboardBase = r.controllerBase = EventMode::All;
+                }
+                r.giveUp = sprint ? EventMode::None : EventMode::NoHold;
+            }
+            if (std::find(r.partnerOf.begin(), r.partnerOf.end(), h.action) == r.partnerOf.end())
+                r.partnerOf.push_back(h.action);
+            return &r;
+        };
+        std::set<std::string> candidates;
+        if (aLive)
+        {
+            for (const auto& [mapping, acts] : feeds)
+                candidates.insert(acts.begin(), acts.end());
+        }
+        std::set<std::string> fedBy[2]; // keyboard, controller
+        for (bool pad : {false, true})
+        {
+            for (const auto& m : h.Side(pad).mappings)
+            {
+                if (auto fed = feeds.find(m); fed != feeds.end())
+                {
+                    fedBy[pad].insert(fed->second.begin(), fed->second.end());
+                    candidates.insert(fed->second.begin(), fed->second.end());
                 }
             }
-        };
-        giveUpHold(h.padMappings, true);
-        std::vector<std::string> keyMaps;
-        for (const auto& o : h.keyOptions)
-        {
-            auto maps = optionMappings.find(o);
-            if (maps != optionMappings.end())
-                keyMaps.insert(keyMaps.end(), maps->second.begin(), maps->second.end());
         }
-        giveUpHold(keyMaps, false);
+        for (const auto& other : candidates)
+        {
+            auto* r = setUp(other);
+            if (!r)
+            {
+                if ((fedBy[0].contains(other) || fedBy[1].contains(other)) && promptAction(other))
+                    aLog("Hold-only: " + other + " keeps its hold (prompt action): " + h.action +
+                         " gives way while its prompt shows");
+                continue;
+            }
+            for (bool pad : {false, true})
+            {
+                if (!fedBy[pad].contains(other))
+                    continue;
+                (pad ? r->controller : r->keyboard) = r->giveUp;
+                aLog("Hold-only: " + other + (r->giveUp == EventMode::None ? " gets no event from the " : " gives up the hold on the ") +
+                     (pad ? "controller" : "keyboard") + " (shares a key with " + h.action + ")");
+            }
+        }
         auto sharedActions = [&](const std::vector<std::string>& aMaps) {
             std::vector<std::string> out;
             for (const auto& m : aMaps)
@@ -1522,52 +1629,22 @@ std::string Keybinds::MarkHoldOnly(const fs::path& aMerged, const fs::path& aMap
             return out;
         };
         auto& self = rule(h.action);
-        self.controllerShared = sharedActions(h.padMappings);
-        self.keyboardShared = sharedActions(keyMaps);
+        self.controllerShared = sharedActions(h.controller.mappings);
+        self.keyboardShared = sharedActions(h.keyboard.mappings);
     }
+    std::string partners;
+    for (const auto& r : aRules)
+    {
+        if (!r.partnerOf.empty())
+            partners += (partners.empty() ? "" : ", ") + r.action;
+    }
+    if (!partners.empty())
+        aLog("Hold-only: may give up their hold when a key is shared: " + partners);
     if (!changed)
         return {};
     std::ostringstream out;
     doc.save(out, "    ");
     return out.str();
-}
-
-std::set<std::string> Keybinds::HoldSensitiveMappings(const fs::path& aMerged, const std::set<std::string>& aShareable)
-{
-    std::set<std::string> out;
-    pugi::xml_document doc;
-    if (!doc.load_file(aMerged.c_str()))
-        return out;
-    auto bindings = doc.child("bindings");
-    std::set<std::string> sensitive = {"ToggleSprint"};
-    for (auto h : bindings.children("hold"))
-        sensitive.insert(h.attribute("action").as_string());
-    for (auto list : bindings.children("acceptedEvents"))
-    {
-        bool hold = false;
-        for (auto e : list.children("event"))
-        {
-            std::string name = e.attribute("name").as_string();
-            hold = hold || name.find("HOLD") != std::string::npos;
-        }
-        // A list without hold events: the action doesn't react to a hold, whatever <hold> says.
-        if (hold)
-            sensitive.insert(list.attribute("action").as_string());
-        else
-            sensitive.erase(list.attribute("action").as_string());
-    }
-    for (auto context : bindings.children("context"))
-    {
-        if (!IsLiveContext(context.attribute("name").as_string()))
-            continue;
-        for (auto action : context.children("action"))
-        {
-            std::string name = action.attribute("name").as_string();
-            if (sensitive.contains(name) && !aShareable.contains(name))
-                out.insert(action.attribute("map").as_string());
-        }
-    }
-    return out;
 }
 
 std::set<std::string> Keybinds::ShareableActions(const std::vector<Action>& aActions)
@@ -1651,8 +1728,11 @@ namespace
 // it includes (actions that can be active together).
 struct ContextIndex
 {
-    std::map<std::string, std::set<std::string>> feeds;
-    std::map<std::string, std::set<std::string>> together;
+    std::map<std::string, std::set<std::string>> feeds;      // mapping -> actions
+    std::map<std::string, std::set<std::string>> together;   // context -> its actions and those it includes
+    std::map<std::string, std::set<std::string>> direct;     // action -> contexts that list it
+    std::map<std::string, std::set<std::string>> includedBy; // context -> contexts that include it
+    std::vector<std::set<std::string>> sections;             // actions of each Settings context with its includes
 };
 
 ContextIndex ReadContextIndex(const fs::path& aContexts)
@@ -1669,7 +1749,12 @@ ContextIndex ReadContextIndex(const fs::path& aContexts)
         if (!IsLiveContext(name))
             continue;
         for (auto action : context.children("action"))
+        {
             out.feeds[action.attribute("map").as_string()].insert(action.attribute("name").as_string());
+            out.direct[action.attribute("name").as_string()].insert(name);
+        }
+        for (auto include : context.children("include"))
+            out.includedBy[include.attribute("name").as_string()].insert(name);
     }
     std::function<std::set<std::string>(const std::string&, std::set<std::string>&)> collect =
         [&](const std::string& aName, std::set<std::string>& aSeen) {
@@ -1695,6 +1780,13 @@ ContextIndex ReadContextIndex(const fs::path& aContexts)
         std::set<std::string> seen;
         out.together[name] = collect(name, seen);
     }
+    for (const auto& [name, node] : contexts)
+    {
+        if (name.rfind("Settings", 0) != 0)
+            continue;
+        std::set<std::string> seen;
+        out.sections.push_back(collect(name, seen));
+    }
     return out;
 }
 // The merged contexts don't change after startup: read once per file (the menu asks on every change).
@@ -1708,18 +1800,57 @@ const ContextIndex& CachedIndex(const fs::path& aContexts)
         found = read.emplace(aContexts, ReadContextIndex(aContexts)).first;
     return found->second;
 }
+
+// The actions a mapping feeds during play. A control scheme's copy (Name_Legacy, Name_Agile,
+// Name_Alternative) is not in the contexts: the game uses it in place of its mapping, so it feeds that one's.
+const std::set<std::string>& Fed(const ContextIndex& aIndex, const std::string& aMapping)
+{
+    static const std::set<std::string> none;
+    if (auto fed = aIndex.feeds.find(aMapping); fed != aIndex.feeds.end())
+        return fed->second;
+    for (const char* s : {"_Legacy", "_Agile", "_Alternative"})
+    {
+        std::string suffix = s;
+        if (aMapping.size() > suffix.size() && aMapping.compare(aMapping.size() - suffix.size(), suffix.size(), suffix) == 0)
+        {
+            if (auto fed = aIndex.feeds.find(aMapping.substr(0, aMapping.size() - suffix.size())); fed != aIndex.feeds.end())
+                return fed->second;
+        }
+    }
+    return none;
+}
 } // namespace
+
+bool Keybinds::ActTogether(const fs::path& aContexts, const std::vector<std::string>& aMappingsA,
+                           const std::vector<std::string>& aMappingsB)
+{
+    const auto& index = CachedIndex(aContexts);
+    std::set<std::string> a, b;
+    for (const auto& m : aMappingsA)
+    {
+        const auto& fed = Fed(index, m);
+        a.insert(fed.begin(), fed.end());
+    }
+    for (const auto& m : aMappingsB)
+    {
+        const auto& fed = Fed(index, m);
+        b.insert(fed.begin(), fed.end());
+    }
+    auto both = [&](const std::set<std::string>& aList) {
+        return std::any_of(a.begin(), a.end(), [&](const auto& x) { return aList.contains(x); }) &&
+               std::any_of(b.begin(), b.end(), [&](const auto& x) { return aList.contains(x); });
+    };
+    bool together = std::any_of(index.together.begin(), index.together.end(), [&](const auto& t) { return both(t.second); });
+    return together && std::any_of(index.sections.begin(), index.sections.end(), both);
+}
 
 std::vector<std::string> Keybinds::FedActions(const fs::path& aContexts, const std::vector<std::string>& aMappings)
 {
     std::vector<std::string> out;
-    const auto& feeds = CachedIndex(aContexts).feeds;
+    const auto& index = CachedIndex(aContexts);
     for (const auto& m : aMappings)
     {
-        auto fed = feeds.find(m);
-        if (fed == feeds.end())
-            continue;
-        for (const auto& a : fed->second)
+        for (const auto& a : Fed(index, m))
         {
             if (std::find(out.begin(), out.end(), a) == out.end())
                 out.push_back(a);
@@ -1728,13 +1859,18 @@ std::vector<std::string> Keybinds::FedActions(const fs::path& aContexts, const s
     return out;
 }
 
-std::vector<std::vector<std::string>> Keybinds::Conflicts(const fs::path& aContexts,
-                                                          const std::vector<BindingEntry>& aEntries)
+Keybinds::SharedKeys Keybinds::Conflicts(const fs::path& aContexts, const std::vector<BindingEntry>& aEntries)
 {
-    std::vector<std::vector<std::string>> out(aEntries.size());
+    SharedKeys out;
+    out.conflicts.resize(aEntries.size());
+    out.shared.resize(aEntries.size());
     const auto& index = CachedIndex(aContexts);
-    const auto& feeds = index.feeds;
-    const auto& together = index.together;
+    const std::set<std::string> none;
+    auto at = [&](const std::map<std::string, std::set<std::string>>& aMap,
+                  const std::string& aKey) -> const std::set<std::string>& {
+        auto it = aMap.find(aKey);
+        return it != aMap.end() ? it->second : none;
+    };
 
     // Actions of each entry. Raw: the mod reads the key itself, so it reacts anywhere.
     std::vector<std::set<std::string>> actions(aEntries.size());
@@ -1744,18 +1880,82 @@ std::vector<std::vector<std::string>> Keybinds::Conflicts(const fs::path& aConte
         raw[i] = aEntries[i].mappings.empty();
         for (const auto& m : aEntries[i].mappings)
         {
-            auto fed = feeds.find(m);
-            if (fed != feeds.end())
-                actions[i].insert(fed->second.begin(), fed->second.end());
+            const auto& fed = Fed(index, m);
+            actions[i].insert(fed.begin(), fed.end());
         }
     }
+
+    // Where each entry acts: the game's sections (its Settings contexts: on foot, vehicle, menus).
+    // The game's actions have theirs. A mod's action takes the section most of the game's actions in
+    // its contexts have, or else that of the contexts that include its own. Empty: anywhere.
+    std::map<std::string, std::map<std::string, int>> anchors; // context -> section -> game actions
+    for (std::size_t i = 0; i < aEntries.size(); ++i)
+    {
+        if (aEntries[i].section.empty())
+            continue;
+        for (const auto& a : actions[i])
+        {
+            for (const auto& c : at(index.direct, a))
+                ++anchors[c][aEntries[i].section];
+        }
+    }
+    std::map<std::string, std::set<std::string>> contextScope;
+    std::function<std::set<std::string>(const std::string&, std::set<std::string>&)> scopeOf =
+        [&](const std::string& aContext, std::set<std::string>& aSeen) {
+            if (auto known = contextScope.find(aContext); known != contextScope.end())
+                return known->second;
+            std::set<std::string> scope;
+            if (!aSeen.insert(aContext).second)
+                return scope;
+            if (auto counts = anchors.find(aContext); counts != anchors.end())
+            {
+                int top = 0;
+                for (const auto& [section, n] : counts->second)
+                    top = std::max(top, n);
+                for (const auto& [section, n] : counts->second)
+                {
+                    if (n == top)
+                        scope.insert(section);
+                }
+            }
+            else
+            {
+                for (const auto& parent : at(index.includedBy, aContext))
+                {
+                    auto inner = scopeOf(parent, aSeen);
+                    scope.insert(inner.begin(), inner.end());
+                }
+            }
+            contextScope[aContext] = scope;
+            return scope;
+        };
+    std::vector<std::set<std::string>> scopes(aEntries.size());
+    for (std::size_t i = 0; i < aEntries.size(); ++i)
+    {
+        if (!aEntries[i].section.empty())
+        {
+            scopes[i].insert(aEntries[i].section);
+            continue;
+        }
+        for (const auto& a : actions[i])
+        {
+            for (const auto& c : at(index.direct, a))
+            {
+                std::set<std::string> seen;
+                auto s = scopeOf(c, seen);
+                scopes[i].insert(s.begin(), s.end());
+            }
+        }
+    }
+    auto sameSection = [&](std::size_t a, std::size_t b) {
+        if (raw[a] || raw[b] || scopes[a].empty() || scopes[b].empty())
+            return true;
+        return std::any_of(scopes[a].begin(), scopes[a].end(), [&](const auto& s) { return scopes[b].contains(s); });
+    };
     auto activeTogether = [&](std::size_t a, std::size_t b) {
-        auto live = [&](std::size_t i) { return raw[i] || !actions[i].empty(); };
-        if (!live(a) || !live(b))
-            return false;
         if (raw[a] || raw[b])
             return true;
-        for (const auto& [name, list] : together)
+        for (const auto& [name, list] : index.together)
         {
             bool hasA = std::any_of(actions[a].begin(), actions[a].end(), [&](const auto& x) { return list.contains(x); });
             bool hasB = std::any_of(actions[b].begin(), actions[b].end(), [&](const auto& x) { return list.contains(x); });
@@ -1773,19 +1973,24 @@ std::vector<std::vector<std::string>> Keybinds::Conflicts(const fs::path& aConte
         for (std::size_t b = a + 1; b < aEntries.size(); ++b)
         {
             const auto& eb = aEntries[b];
+            // Not a pair: another key, the same entry, a (Hold) entry with another (tap / hold, it has a
+            // panel line of its own), entries feeding the same action, or one no context uses.
             if (eb.key != ea.key || eb.name == ea.name || ea.shareable != eb.shareable)
-                continue;
-            // Two of the game's own keyboard entries: its menu checks those itself.
-            if (ea.mod.empty() && eb.mod.empty() && !(ea.gamePad && eb.gamePad))
-                continue;
-            if (ea.atDefault && eb.atDefault && (ea.mod.empty() || eb.mod.empty() || ea.mod == eb.mod))
                 continue;
             if (std::any_of(actions[a].begin(), actions[a].end(), [&](const auto& x) { return actions[b].contains(x); }))
                 continue;
-            if (!activeTogether(a, b))
+            if ((!raw[a] && actions[a].empty()) || (!raw[b] && actions[b].empty()))
                 continue;
-            out[a].push_back(eb.name);
-            out[b].push_back(ea.name);
+            bool conflict = sameSection(a, b) && activeTogether(a, b);
+            // Two of the game's own entries (none of ours replaces them): its menu checks those itself.
+            if (ea.mod.empty() && eb.mod.empty() && !(ea.game && eb.game))
+                conflict = false;
+            // Two keys as the game or one mod set them: made to be shared.
+            if (ea.atDefault && eb.atDefault && (ea.mod.empty() || eb.mod.empty() || ea.mod == eb.mod))
+                conflict = false;
+            auto& list = conflict ? out.conflicts : out.shared;
+            list[a].push_back(eb.name);
+            list[b].push_back(ea.name);
         }
     }
     return out;

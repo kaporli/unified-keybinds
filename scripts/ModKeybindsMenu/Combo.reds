@@ -25,21 +25,12 @@ protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
   // A (Cross) can be part of a controller combination: pressed while waiting it must not restart the watch.
   if (e.IsAction(n"click") || e.IsAction(n"tap")) && !this.IsListeningForInput() {
     let v = this.m_SettingsEntry as ConfigVarName;
-    let padNames = ModKeybindsMenu_PadNames();
-    // Native Settings UI and RCF mods read a single key, and controller buttons go alone.
-    if IsDefined(v) && ModKeybindsIsModGroup(v) && !StrBeginsWith(NameToString(v.GetName()), "NSUI_")
-      && !ModKeybindsRcf.IsRcfKey(v.GetName()) {
+    if ModKeybindsTakesCombo(v) {
+      let padNames = ModKeybindsMenu_PadNames();
       let padEntry = ArrayContains(padNames, v.GetName());
-      // Trigger entries take a single trigger.
-      if !padEntry || !ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName())) {
-        this.m_modKeybindsBinding = true;
-        this.m_modKeybindsPadBinding = padEntry;
-        if padEntry {
-          ModKeybindsMenu_WatchPad();
-        } else {
-          ModKeybindsMenu_WatchModifier();
-        }
-      }
+      this.m_modKeybindsBinding = true;
+      this.m_modKeybindsPadBinding = padEntry;
+      ModKeybindsMenu_Watch(padEntry);
     }
   }
   let result = wrappedMethod(e);
@@ -62,7 +53,7 @@ public func Refresh() -> Void {
   let keys = ModKeybindsMenu_ComboKeys(value);
   if this.m_modKeybindsBinding && !this.IsListeningForInput() {
     this.m_modKeybindsBinding = false;
-    let combo = StringToName(this.m_modKeybindsPadBinding ? ModKeybindsMenu_PadCombo() : ModKeybindsMenu_KeyCombo());
+    let combo = StringToName(ModKeybindsMenu_Combo());
     this.m_modKeybindsPadBinding = false;
     let comboKeys = ModKeybindsMenu_ComboKeys(combo);
     // Only when the game bound one of its keys, not after a cancel. The game is still storing its
@@ -117,9 +108,8 @@ protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   if Equals(item.GetVarUpdatePolicy(), ConfigVarUpdatePolicy.ConfirmationRequired) {
     text += "\n\n" + GetLocalizedText("LocKey#76947");
   }
-  // A shared controller button counts at once; a shared keyboard key after a restart.
-  let restart = combo && share && !pad ? "Combinations and shared keys apply after a restart."
-    : (combo ? "Combinations apply after a restart." : (pad ? "" : "Shared keys apply after a restart."));
+  // A shared key counts at once, on both devices.
+  let restart = combo ? "Combinations apply after a restart." : "";
   if StrLen(restart) > 0 {
     text += "\n\n<Rich " + this.m_descriptionWarningRichColor + ">" + restart + "</>";
   }
@@ -156,8 +146,7 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   let listed = 0;
   for name in pending {
     let at = ArrayFindFirst(names, name);
-    // The keyboard entry of a (Hold) action is one of the game, outside the mod sections.
-    let entry = at >= 0 ? this.m_settings.GetVar(groups[at], name) as ConfigVarName : this.ModKeybindsKeyVar(name);
+    let entry = at >= 0 ? this.m_settings.GetVar(groups[at], name) as ConfigVarName : null;
     if IsDefined(entry) {
       if listed < 5 {
         text += "\n" + ModKeybindsEntryLabel(entry, false);
@@ -207,17 +196,15 @@ protected cb func OnModKeybindsSetCombo(e: ref<ModKeybindsComboEvent>) -> Bool {
   return true;
 }
 
-// True for entries that take a key combination: mod keyboard entries (Native Settings UI and RCF
-// mods read a single key) and controller entries of a button (a trigger goes alone).
+// True for entries that take a key combination, keyboard and controller alike (see the plugin's
+// TakesCombo: a button mapping, not a Native Settings UI or RCF key, not a trigger).
 private func ModKeybindsTakesCombo(v: ref<ConfigVarName>) -> Bool {
   if !IsDefined(v) || !ModKeybindsIsModGroup(v) {
     return false;
   }
-  let padNames = ModKeybindsMenu_PadNames();
-  if ArrayContains(padNames, v.GetName()) {
-    return !ModKeybindsPad.IsTrigger(ModKeybindsPad.Default(v.GetName()));
-  }
-  return !StrBeginsWith(NameToString(v.GetName()), "NSUI_") && !ModKeybindsRcf.IsRcfKey(v.GetName());
+  // Native results go into a variable first: used inline the call doesn't run.
+  let takes = ModKeybindsMenu_TakesCombo(v.GetName());
+  return takes;
 }
 
 private func ModKeybindsIsModGroup(v: ref<ConfigVarName>) -> Bool {

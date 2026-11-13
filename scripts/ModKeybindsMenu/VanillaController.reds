@@ -1,7 +1,6 @@
 module ModKeybindsMenu
 
-// Optional file Vanilla Controller Rebinding. The plugin lists the vanilla controller entries only
-// while this file is installed.
+// Vanilla controller entries: the Control Scheme screen and the per-scheme controller keys.
 //
 // Settings > Controls > Control Scheme draws a controller with what each button does. The drawing
 // follows the controller bindings from Key Bindings: a row whose button was changed moves to that
@@ -516,15 +515,15 @@ public abstract class ModKeybindsScheme {
     // default) get one at their button, on the on-foot tab. A hold when another row has the button:
     // they share it as tap and hold.
     let shared = ModKeybindsMenu_HoldShareNames();
+    let padNames = ModKeybindsMenu_PadNames();
     let inputTab = ModKeybindsScheme.Child(root, "Input") as inkCompoundWidget;
     let look = ArraySize(rows) > 0 ? ModKeybindsScheme.FirstText(rows[0].widget) as inkText : null;
     let j = 0;
     while j < ArraySize(shared) && IsDefined(inputTab) && IsDefined(look) {
       let entry = shared[j];
-      // Pairs: the controller entry, then the game's keyboard option.
-      j += 2;
+      j += 1;
       let current = ModKeybindsScheme.Value(settings, names, groups, entry, n"IK_None");
-      if !ModKeybindsScheme.HasEntry(rows, entry) && IsNameValid(current) && NotEquals(current, n"IK_None") {
+      if ArrayContains(padNames, entry) && !ModKeybindsScheme.HasEntry(rows, entry) && IsNameValid(current) && NotEquals(current, n"IK_None") {
         let hold = false;
         for other in rows {
           if Equals(other.current, current) && !other.hold && Equals(ModKeybindsScheme.Tab(other.widget), inputTab) {

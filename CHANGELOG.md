@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.0.0 (2026-11-14)
+
+One download, keyboard and controller on equal terms, and fewer restarts.
+
+Updating from 1.x: the optional file Vanilla Controller Rebinding is part of the main file now. Remove it before you install 2.0.0 (in Mod Organizer 2 or Vortex, uninstall it), or its older script replaces the new one. Your bindings carry over.
+
+Keyboard
+- Vanilla keyboard keys take combinations too, like mod keys and controller buttons (the game's own entries take a single key). Your keys carry over, and a single key is kept in the game's settings, so removing the mod keeps them.
+- A shared keyboard key of a (Hold) action works as soon as you bind it, like a shared controller button. Before, it needed a restart.
+
+Controller
+- Vanilla controller rebinding (Classic, Dynamic, Alternative, with Sprint (Hold), Crouch (Hold) and Scan (Toggle)) is part of the main file.
+- A control scheme change applies at once: the controller entries, the Classic dodge and the Dynamic crouch follow the new scheme. Before, it needed a restart and showed a popup.
+- Controller entries for mod actions that only had a keyboard entry: a mod mapping with a key and a controller button but no rebind name (for example Chipware Expansion's Crack Chip and Renew Chip, Enhanced Craft's Next, Disassemble As Looting Choice), or with one rebind name on both. Key and button rebind separately.
+
+Conflicts
+- Shared bindings: a key used by actions that are never active at the same time (Jump and a map's Track Waypoint on Space) is no longer reported as a conflict.
+- The side panel lists real conflicts under Conflicts with (red) and shared keys under Shared with, each action with its section. The popup (Conflicting keys) lists only conflicts.
+
+Fewer restarts
+- No restart for a key that takes away another action's hold (for example Crouch (Hold) on the button of Call Vehicle) or for a control scheme change. Key combinations still apply after a restart.
+
+Fixes
+- Unbinding both an action's key and its controller button: the game dropped one of them until it restarted.
+- A joystick key (`IK_Joy`) was taken by a keyboard entry and refused by a controller entry.
+
+Under the hood
+- Keyboard and controller go through the same code for recording combinations, key names, which keys fit an entry, sharing and conflicts.
+
 ## 1.8.2 (2026-11-13)
 
 - Fix: heavy stutter and input delay while the game switched between controller and keyboard and mouse many times a second, for example with a gyro mapped to the mouse through Steam Input (since 1.8.0). A memory check ran on every switch; it now runs once.

@@ -22,10 +22,13 @@ bool WriteFile(const std::filesystem::path& aPath, const std::string& aText);
 
 // Moves mod sections from aSource into aStore and writes the rest to aTarget (aSource may be
 // aTarget). Returns false if aSource could not be read as settings. aDefaults (by action name) is
-// stored with the keys: the game writes no defaults for the mod sections.
+// stored with the keys: the game writes no defaults for the mod sections. aMirror (entry name ->
+// settings group and option): a single key (or unbound) of such an entry is also written to that
+// game option, so the game keeps the player's keys without this mod.
 bool Split(const std::filesystem::path& aSource, const std::filesystem::path& aTarget,
            const std::filesystem::path& aStore, const Keybinds::LogFn& aLog,
-           const std::map<std::string, std::string>& aDefaults = {});
+           const std::map<std::string, std::string>& aDefaults = {},
+           const std::map<std::string, std::pair<std::string, std::string>>& aMirror = {});
 
 // aSettings with a section for every action, keys from aStore, else the action's default.
 // Empty if aSettings could not be read as settings.
@@ -46,6 +49,20 @@ void DropUnrecordedSchemeKeys(const std::filesystem::path& aStore, const std::ve
 // in aStore ("_schemes": {"Agile": {...}}): each scheme is a layout of its own. aScheme is the scheme
 // in use (Legacy, Agile, Alternative); empty keeps them with the other keys.
 void SetScheme(const std::string& aScheme);
+
+// A key of one of the game's controller entries as the menu set it, with its settings group and default.
+struct StoredKey
+{
+    std::string name;
+    std::string group;
+    std::string key;
+    std::string defaultKey;
+};
+
+// Stores the game's controller keys (groups /key_bindings/SettingsModPad...) in aStore for the scheme in
+// use now. Split leaves them out: a settings write right after a scheme change still holds the previous
+// scheme's keys.
+void StoreGamePadKeys(const std::filesystem::path& aStore, const std::vector<StoredKey>& aKeys, const Keybinds::LogFn& aLog);
 
 // Stores from before 1.7.1 keep the game's controller keys with the other keys: they move into each
 // scheme (an entry that follows the control scheme only into the one in use, its key was set there).

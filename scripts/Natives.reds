@@ -33,19 +33,20 @@ public static native func ModKeybindsMenu_ComboKeys(value: CName) -> array<CName
 // The entries whose change applies after a restart (a key combination, a key the game dropped while unbound, a shared key of a (Hold) action), when the player wasn't told about them yet; else empty
 public static native func ModKeybindsMenu_RestartNotice(names: array<CName>, keys: array<CName>) -> array<CName>
 
-// Controller scheme the controller entries were made for: Legacy, Agile or Alternative
+// Controller scheme in use: Legacy, Agile or Alternative
 public static native func ModKeybindsMenu_PadScheme() -> CName
 
-// True when this controller scheme differs from the one the controller entries were made for (they follow after a restart) and the player wasn't told yet
-public static native func ModKeybindsMenu_SchemeNotice(scheme: String) -> Bool
+// The control scheme changed (Legacy, Agile, Alternative): controller defaults and stored keys follow it. True when it differs from the one in use; the scripts then load its keys
+public static native func ModKeybindsMenu_SetScheme(scheme: String) -> Bool
 
-// Starts watching the keyboard and mouse while an entry waits for a key
-public static native func ModKeybindsMenu_WatchModifier() -> Void
 
-// The two keys pressed together while the entry waited ("IK_Q+IK_E"), or empty; ends the watch
-public static native func ModKeybindsMenu_KeyCombo() -> String
+// Starts watching the keyboard and mouse, or the controller (pad: XInput), while an entry waits for a key
+public static native func ModKeybindsMenu_Watch(pad: Bool) -> Void
 
-// Entries that may share their key with another action, in pairs: the controller entry of a (Hold) binding, then the game's keyboard option of it
+// The two keys pressed together while the entry waited ("IK_Q+IK_E", "IK_Pad_LeftShoulder+IK_Pad_A_CROSS"), or empty; ends the watch
+public static native func ModKeybindsMenu_Combo() -> String
+
+// Entries that may share their key with another action: the keyboard and controller entries of the (Hold) bindings
 public static native func ModKeybindsMenu_HoldShareNames() -> array<CName>
 
 // For each entry (its settings group path, at its default key), the names of the other entries on
@@ -68,11 +69,15 @@ public static native func ModKeybindsMenu_SetHoldBlocked(actions: array<CName>) 
 // The device in use changed (true: a controller). Hold-only controller buttons follow it
 public static native func ModKeybindsMenu_SetDevice(pad: Bool) -> Void
 
-// Starts watching the controller (XInput) while a controller entry waits for a button
-public static native func ModKeybindsMenu_WatchPad() -> Void
-
-// The two buttons pressed together while the entry waited ("IK_Pad_LeftShoulder+IK_Pad_A_CROSS"), or empty; ends the watch
-public static native func ModKeybindsMenu_PadCombo() -> String
-
 // False while a session starts or ends: keys set then are applied once it is true again
 public static native func ModKeybindsMenu_SetStable(stable: Bool) -> Void
+
+// Short text of a key, keyboard or controller: "LB", "F3", a combination as "LB + A"
+public static native func ModKeybindsMenu_KeyText(key: CName) -> String
+
+// True when the entry takes a key combination (a button mapping, not a key Native Settings UI or RCF reads, not a trigger)
+public static native func ModKeybindsMenu_TakesCombo(name: CName) -> Bool
+
+// True when the key fits the entry: a key of its device, a trigger for a trigger entry and a button for a
+// button entry. A game entry the plugin doesn't list takes keyboard and mouse keys.
+public static native func ModKeybindsMenu_Fits(name: CName, key: CName) -> Bool

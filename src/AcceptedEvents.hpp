@@ -29,8 +29,8 @@ void Set(const std::vector<Keybinds::EventRule>& aRules);
 // on the device in use while they are listed. Empty: none.
 void SetBlocked(const std::vector<std::string>& aActions);
 
-// Changes the controller side of an action's rule (the action must have a rule since Set).
-void SetController(const std::string& aAction, Keybinds::EventMode aMode);
+// Changes one device's side of an action's rule (the action must have a rule since Set). aPad: the controller.
+void SetSide(const std::string& aAction, bool aPad, Keybinds::EventMode aMode);
 
 // The device in use (the game's InputSchemes.Device): true for a controller.
 void SetDevice(bool aPad);

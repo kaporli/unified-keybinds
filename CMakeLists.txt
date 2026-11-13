@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ModKeybindsMenu VERSION 1.8.2 LANGUAGES CXX)
+project(ModKeybindsMenu VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,16 +41,11 @@ target_link_libraries(ModKeybindsMenu PRIVATE RED4ext::SDK shell32 ole32)
 set(PKG "${CMAKE_SOURCE_DIR}/package/red4ext/plugins/ModKeybindsMenu")
 # Companion for Native Settings UI key bindings, run by CET when installed
 set(CET "${CMAKE_SOURCE_DIR}/package/bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu")
-# Optional file: vanilla controller entries and the Control Scheme diagram (scripts-optional)
-set(OPT "${CMAKE_SOURCE_DIR}/package/optional/red4ext/plugins/ModKeybindsMenu")
 add_custom_command(TARGET ModKeybindsMenu POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${PKG}/scripts"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PKG}/scripts"
   COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:ModKeybindsMenu>" "${PKG}/"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/scripts" "${PKG}/scripts"
-  COMMAND ${CMAKE_COMMAND} -E remove_directory "${OPT}/scripts"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${OPT}/scripts"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/scripts-optional" "${OPT}/scripts"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${CET}"
   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/cet/init.lua" "${CET}/"
 )

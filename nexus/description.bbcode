@@ -9,16 +9,17 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [*]One section per mod with names from the mod's files, for example [i]"Mod: [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url]"[/i] with [i]"Vehicle Flight Linear Brake"[/i]. Add or remove a mod and the sections follow.[/*]
 [*]Also lists keys the mod didn't make rebindable, for example [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url]'s F1 to F4 and T. Actions already in the menu (vanilla, or from mods like [url=https://www.nexusmods.com/cyberpunk2077/mods/4008]No More Hard-coded Keybinds[/url]) are not listed twice.[/*]
 [*]A changed key applies right away and stays in sync with where the mod keeps it (see the table below).[/*]
-[*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Record your own: [b]hold one key and press another[/b] ([i]ex. "Ctrl + K"[/i], [i]"Q + E"[/i]), or on a controller [b]hold one button and press another[/b] ([i]"LB + A"[/i]). A key pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.
+[*]Key combinations show as their keys ([i]"F2 + 2"[/i]). Every keyboard entry takes one, vanilla included. Record your own: [b]hold one key and press another[/b] ([i]ex. "Ctrl + K"[/i], [i]"Q + E"[/i]), or on a controller [b]hold one button and press another[/b] ([i]"LB + A"[/i]). A key pressed alone is bound alone. [b]Defaults[/b] restores a combination from the next launch.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/combination.png[/img]
-[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/prompt.png[/img][/*]
-[*][b]Tap or hold on one key[/b]: a (Hold) action can share its key with another action. Tap for the other action, hold for this one, for example [b]Sprint (Hold) and Dodge on B[/b], or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. On a controller it works as soon as you bind it. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
+[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/prompt.png[/img]
+[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/restart-popup.png[/img][/*]
+[*][b]Tap or hold on one key[/b]: a (Hold) action can share its key with another action. Tap for the other action, hold for this one, for example [b]Sprint (Hold) and Dodge on B[/b], or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. It works as soon as you bind it, on keyboard and controller. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/shared-key.png[/img][/*]
-[*][b]Conflict warning[/b]: when two actions that react at the same time share a key or button, a popup lists the keys, and each entry's side panel names what shares it.
+[*][b]Conflict warning[/b]: when two actions that react at the same time share a key or button, a popup lists the keys, and each entry's side panel lists them under Conflicts with. A key shared by actions that are never active at the same time (Jump and a map's Track Waypoint on Space) is no conflict: the side panel lists it under Shared with, and the popup leaves it out.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/conflict.png[/img][/*]
 [*][b]Unbinding[/b], which the game doesn't offer: point at any entry and press [b]X[/b] (Square on a controller). It stays unbound across save loads and restarts, and [b]Defaults[/b] brings the key back.[/*]
 [*][b]Controller rebinding[/b], which the game doesn't offer: with a controller in use, the menu shows controller buttons for mod actions, and switches back when you use the keyboard.[/*]
-[*]Optional file [b]Vanilla Controller Rebinding[/b]: vanilla controller buttons too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). Each scheme keeps its own layout. The [b]Control Scheme[/b] screen shows your bindings. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get controller entries too: for example [b]Crouch (Hold) on L3[/b] next to Sprint, or [b]Scan (Toggle) on B[/b] next to Dodge. With Scan (Hold) and Scan (Toggle) on one button, tap is a quick scan and hold switches scanning on or off. Works on all three schemes.
+[*][b]Vanilla controller buttons[/b] too, with the game's own names, following your control scheme (Classic, Dynamic, Alternative). Each scheme keeps its own layout. The [b]Control Scheme[/b] screen shows your bindings. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get controller entries too: for example [b]Crouch (Hold) on L3[/b] next to Sprint, or [b]Scan (Toggle) on B[/b] next to Dodge. With Scan (Hold) and Scan (Toggle) on one button, tap is a quick scan and hold switches scanning on or off. Works on all three schemes.
 [img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/control-scheme-shared.png[/img][/*]
 [*]Your keys are kept in a file of their own, written safely and with a backup of the previous version, so removing a mod or a crash doesn't cost your bindings.[/*]
 [*]Never changes game or mod files, so mods that edit the settings menu keep working.[/*]
@@ -31,7 +32,7 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [/tr]
 [tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] input file, with or without [font=Courier New]overridableUI[/font] (for example [url=https://www.nexusmods.com/cyberpunk2077/mods/5208]Let There Be Flight[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/11765]Enhanced Vehicle System[/url])[/td]
-[td]Listed at startup. A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.[/td]
+[td]Listed at startup. A key and a controller button get an entry each, also when the mod didn't make them rebindable (for example Chipware Expansion). A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch.[/td]
 [/tr]
 [tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
 [td][url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url] key option[/td]
@@ -54,8 +55,12 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [td]With the mod's own names. Single keys and controller buttons. Kept in sync both ways.[/td]
 [/tr]
 [tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
-[td]Vanilla controller buttons (optional file [b]Vanilla Controller Rebinding[/b])[/td]
-[td]One layout per control scheme. After you change the scheme, the controller entries follow from the next launch (a popup says so).[/td]
+[td]Vanilla keyboard keys[/td]
+[td]The game's own entries, with key combinations. A single key is also kept in the game's settings, so removing the mod keeps it.[/td]
+[/tr]
+[tr][td][b][color=#4caf50]✓ Native[/color][/b][/td]
+[td]Vanilla controller buttons[/td]
+[td]Part of the main file (was an optional file before 2.0.0). One layout per control scheme. After you change the scheme, the controller entries follow it at once.[/td]
 [/tr]
 [tr][td][b]⏳ Not yet[/b][/td]
 [td]...[/td]
@@ -69,8 +74,7 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [size=4][b][color=#e5be37]Limitations[/color][/b][/size]
 [list]
 [*][color=#e5be37][b]Controller: an action is listed when exactly one button triggers it. Movement, aiming, attacking and stick axes stay as they are.[/b][/color][/*]
-[*][color=#e5be37][b]Key combinations and shared keyboard keys apply after a restart (a popup names the entries). The game takes about 30 combinations in total.[/b][/color]
-[img]https://raw.githubusercontent.com/kaporli/unified-keybinds/main/screenshots/restart-popup.png[/img][/*]
+[*][color=#e5be37][b]Key combinations apply after a restart (a popup names the entries). The game takes about 30 combinations in total.[/b][/color][/*]
 [*][color=#e5be37][b]An action sharing a key with a (Hold) action stops reacting to holding that key on that device. A tap still works. On-screen prompts (talk, loot, pickpocket) keep their hold and come first.[/b][/color][/*]
 [/list]
 [size=4][b]Requirements[/b][/size]
@@ -80,15 +84,15 @@ The game only lets you rebind its own keyboard keys, and many mods keep theirs i
 [*]Optional, for the keys kept there: [url=https://www.nexusmods.com/cyberpunk2077/mods/4885]Mod Settings[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/107]Cyber Engine Tweaks[/url] with [url=https://www.nexusmods.com/cyberpunk2077/mods/3518]Native Settings UI[/url], [url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url][/*]
 [/list]
 [size=4][b]Installation[/b][/size]
-Install with Mod Organizer 2 or Vortex, or extract into the game folder. The optional file goes on top of the main file. The files go to:
+Install with Mod Organizer 2 or Vortex, or extract into the game folder. The files go to:
 [code]red4ext/plugins/ModKeybindsMenu/
-bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
-red4ext/plugins/ModKeybindsMenu/scripts/ModKeybindsMenu/VanillaController.reds (optional file)[/code]
+bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua[/code]
+[b]Updating from 1.x[/b]: the optional file Vanilla Controller Rebinding is part of the main file now. Remove it before you install 2.0.0 (in Mod Organizer 2 or Vortex, uninstall it), or its older script replaces the new one.
 [size=4][b]Uninstallation[/b][/size]
 Remove both [font=Courier New]ModKeybindsMenu[/font] folders. Optionally delete [font=Courier New]r6/cache/modkeybinds/[/font], where the mod keys are kept. Nothing is written to your save. On 1.0.0, [b]start the game once with a newer version before uninstalling[/b], so your settings file gets cleaned up.
 
 [size=4][b]For mod authors[/b][/size]
-Your action shows up if an [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] file gives it [font=Courier New]<button id="IK_..." overridableUI="yourActionName" />[/font], or if it is a [font=Courier New]Button[/font] mapping with a single key or key combination ([font=Courier New]buttonGroup[/font]) and no [font=Courier New]overridableUI[/font], listed under the mapping's name.
+Your action shows up if an [url=https://www.nexusmods.com/cyberpunk2077/mods/4575]Input Loader[/url] file gives it [font=Courier New]<button id="IK_..." overridableUI="yourActionName" />[/font], or if it is a [font=Courier New]Button[/font] mapping with a single key or key combination ([font=Courier New]buttonGroup[/font]) and no [font=Courier New]overridableUI[/font], listed under the mapping's name. A controller button in the same mapping gets a controller entry.
 
 For nicer names, ship [font=Courier New]r6/config/modkeybinds/<YourMod>.json[/font]:
 [code]{
