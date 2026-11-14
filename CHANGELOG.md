@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 (2026-11-14)
+
+- The conflict popup shows only when an applied key change makes a new conflict, and names the action, its key and what it conflicts with. Applying other settings or opening Key Bindings no longer brings it up.
+- Side panel: the selected key's conflicts and shared keys under its key icon, then every conflicting key of the device in view below a divider. Key icons in the panel are drawn in the menu's cyan.
+- Fix: closing the mod's popup with Enter or A started binding the selected entry, so it could end up on Enter.
+
 ## 2.0.1 (2026-11-14)
 
 - Fix: Sprint, Scan and other (Hold) actions reacted late on the keyboard, or not to a tap, when a mod or an Input Loader edit used the same key (since 2.0.0). The (Hold) action waited for a long press. On the keyboard only the game's own key binding options share a key again, as in 1.8.2.

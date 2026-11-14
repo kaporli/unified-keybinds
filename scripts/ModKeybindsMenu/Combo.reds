@@ -22,6 +22,10 @@ public class ModKeybindsComboEvent extends Event {}
 
 @wrapMethod(SettingsSelectorControllerKeyBinding)
 protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
+  // A click meant for the popup (see ModKeybindsClickGuard).
+  if ModKeybindsClickGuard.Get().skip && (e.IsAction(n"click") || e.IsAction(n"tap")) && !this.IsListeningForInput() {
+    return false;
+  }
   // A (Cross) can be part of a controller combination: pressed while waiting it must not restart the watch.
   if (e.IsAction(n"click") || e.IsAction(n"tap")) && !this.IsListeningForInput() {
     let v = this.m_SettingsEntry as ConfigVarName;
@@ -73,6 +77,13 @@ public func Refresh() -> Void {
 @wrapMethod(SettingsMainGameController)
 protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   let result = wrappedMethod(evt);
+  // Key icons in the panel take its text color: cyan while a key binding's panel shows them (its text
+  // gets explicit colors), the game's own color for everything else.
+  if !this.m_modKeybindsDescTintSet {
+    this.m_modKeybindsDescTint = inkWidgetRef.GetTintColor(this.m_descriptionText);
+    this.m_modKeybindsDescTintSet = true;
+  }
+  inkWidgetRef.SetTintColor(this.m_descriptionText, this.m_modKeybindsDescTint);
   let item = evt.GetCurrentTarget().GetController() as SettingsSelectorControllerKeyBinding;
   if !IsDefined(item) {
     return result;
@@ -88,26 +99,27 @@ protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   let combo = ModKeybindsTakesCombo(v);
   let share = ArrayContains(sharing, v.GetName());
   this.ModKeybindsCheckConflicts();
-  let conflict = this.ModKeybindsConflictLine(v.GetName());
+  let conflict = this.ModKeybindsConflictLine(v);
   if !combo && !share {
     if StrLen(conflict) > 0 {
-      inkTextRef.SetText(this.m_descriptionText, inkTextRef.GetText(this.m_descriptionText) + "\n\n" + conflict);
+      this.ModKeybindsPanelText(ModKeybindsPlain(inkTextRef.GetText(this.m_descriptionText)) + "\n\n" + conflict);
     }
     return result;
   }
   // In place of the game's "Bind.", laid out like its own panels: the description, the confirmation
   // note, and a restart line in the panel's highlight color.
   let thing = pad ? "button" : "key";
-  let text = "Bind a " + thing + ".";
+  let plain = "Bind a " + thing + ".";
   if combo {
-    text += "\nCombination: hold a " + thing + ", then press another.";
+    plain += "\nCombination: hold a " + thing + ", then press another.";
   }
   if share {
-    text += "\nShared " + thing + ": tap for the other action, hold for this one.";
+    plain += "\nShared " + thing + ": tap for the other action, hold for this one.";
   }
   if Equals(item.GetVarUpdatePolicy(), ConfigVarUpdatePolicy.ConfirmationRequired) {
-    text += "\n\n" + GetLocalizedText("LocKey#76947");
+    plain += "\n\n" + GetLocalizedText("LocKey#76947");
   }
+  let text = ModKeybindsPlain(plain);
   // A shared key counts at once, on both devices.
   let restart = combo ? "Combinations apply after a restart." : "";
   if StrLen(restart) > 0 {
@@ -116,8 +128,40 @@ protected cb func OnSettingHoverOver(evt: ref<inkPointerEvent>) -> Bool {
   if StrLen(conflict) > 0 {
     text += "\n\n" + conflict;
   }
-  inkTextRef.SetText(this.m_descriptionText, text);
+  this.ModKeybindsPanelText(text);
   return result;
+}
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsDescTint: HDRColor;
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsDescTintSet: Bool;
+
+// Panel text in the description's grey, set as an explicit color so it stays grey under the cyan tint.
+// One color tag per line: a tag spanning a line break shows as text.
+private func ModKeybindsPlain(text: String) -> String {
+  let out = "";
+  let lines = StrSplit(text, "\n", true);
+  let i = 0;
+  while i < ArraySize(lines) {
+    if i > 0 {
+      out += "\n";
+    }
+    if StrLen(lines[i]) > 0 {
+      out += "<Rich color=\"MainColors.Grey\">" + lines[i] + "</>";
+    }
+    i += 1;
+  }
+  return out;
+}
+
+// Sets a key binding's panel text, every part with its own color, and tints the rest (the key icons)
+// in the cyan of the menu's key icons.
+@addMethod(SettingsMainGameController)
+private func ModKeybindsPanelText(text: String) -> Void {
+  inkWidgetRef.SetTintColor(this.m_descriptionText, new HDRColor(0.368, 0.964, 1.0, 1.0));
+  inkTextRef.SetText(this.m_descriptionText, text);
 }
 
 @addField(SettingsMainGameController)
@@ -160,10 +204,15 @@ public func OnSettingsNotify(status: ConfigNotificationType) -> Void {
   if listed > 0 {
     text = "Restart the game to apply:" + text;
   }
-  // One message at a time: the conflicts come when Key Bindings opens next, and stay in the side panel.
-  if StrLen(text) == 0 && !IsDefined(this.m_modKeybindsPopup) {
-    text = this.ModKeybindsConflictPopup();
+  // A conflict only when a key applied now makes one, never for other settings. Under the restart list
+  // when both apply (one popup at a time).
+  if !IsDefined(this.m_modKeybindsPopup) {
+    let conflicts = this.ModKeybindsNewConflicts();
+    if StrLen(conflicts) > 0 {
+      text += (StrLen(text) > 0 ? "\n" : "") + conflicts;
+    }
   }
+  this.ModKeybindsSnapshot();
   if StrLen(text) > 0 {
     this.ModKeybindsShowPopup(text);
   }
@@ -178,12 +227,36 @@ private func ModKeybindsShowPopup(text: String) -> Void {
   // The token has to be kept, or the popup closes at once.
   this.m_modKeybindsPopup = GenericMessageNotification.Show(this, "Unified Keybinds", text, GenericMessageNotificationType.OK);
   this.m_modKeybindsPopup.RegisterListener(this, n"OnModKeybindsPopupClosed");
+  ModKeybindsClickGuard.Get().skip = true;
 }
 
 @addMethod(SettingsMainGameController)
 protected cb func OnModKeybindsPopupClosed(data: ref<inkGameNotificationData>) -> Bool {
   this.m_modKeybindsPopup = null;
+  // Enter or A closes the popup on press; the entries keep ignoring clicks until its release is done.
+  this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnModKeybindsReleaseAfterPopup");
   return true;
+}
+
+@addMethod(SettingsMainGameController)
+protected cb func OnModKeybindsReleaseAfterPopup(e: ref<inkPointerEvent>) -> Bool {
+  // One release arrives as an event per action: wait for the click.
+  if e.IsAction(n"click") || e.IsAction(n"tap") {
+    this.UnregisterFromGlobalInputCallback(n"OnPostOnRelease", this, n"OnModKeybindsReleaseAfterPopup");
+    ModKeybindsClickGuard.Get().skip = false;
+  }
+  return false;
+}
+
+// The release of the key that closes the popup reaches the hovered entry and would start binding it.
+// The entries ignore clicks while the popup is open and until that release is done. A service, so the
+// entries and the menu share it.
+public class ModKeybindsClickGuard extends ScriptableService {
+  public let skip: Bool;
+
+  public static func Get() -> ref<ModKeybindsClickGuard> {
+    return GameInstance.GetScriptableServiceContainer().GetService(n"ModKeybindsMenu.ModKeybindsClickGuard") as ModKeybindsClickGuard;
+  }
 }
 
 @addMethod(SettingsSelectorControllerKeyBinding)

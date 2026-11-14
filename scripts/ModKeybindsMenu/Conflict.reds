@@ -1,8 +1,8 @@
 module ModKeybindsMenu
 
 // Keys used by two actions that react at the same time, e.g. two mods on F3 (the plugin decides
-// from the input contexts, see ModKeybindsMenu_Conflicts). Listed in a popup when they change and
-// in red in the side panel of each entry involved. A key shared by actions that are never active at
+// from the input contexts, see ModKeybindsMenu_Conflicts). A popup names a new one when a changed key
+// is applied; the side panel lists the hovered entry's in red and every conflicting key below. A key shared by actions that are never active at
 // the same time (Crouch and a menu's Cancel) is no conflict: the side panel names them in the
 // panel's highlight color, the popup leaves them out.
 
@@ -17,6 +17,27 @@ private let m_modKeybindsSharedNames: array<CName>;
 
 @addField(SettingsMainGameController)
 private let m_modKeybindsSharedLists: array<String>; // per name: side panel rows of the other entries
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsConflictRaw: array<String>; // per name: the other entries' names, comma separated
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsPanelKeys: array<CName>; // every conflicting key in view, for the side panel
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsPanelIcons: array<String>; // ...its key icon (not inside a color tag: it shows as text there)
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsPanelRows: array<String>; // ...its actions
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsPanelMore: array<Int32>; // ...and how many actions it leaves out
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsSnapNames: array<CName>; // the keys at the last apply (or menu open)
+
+@addField(SettingsMainGameController)
+private let m_modKeybindsSnapKeys: array<CName>;
 
 @addField(SettingsMainGameController)
 private let m_modKeybindsConflictKeys: String; // the keys the last check was made for
@@ -96,6 +117,7 @@ private func ModKeybindsCheckConflicts() -> String {
   this.m_modKeybindsConflictKeys = current;
   ArrayClear(this.m_modKeybindsConflictNames);
   ArrayClear(this.m_modKeybindsConflictLists);
+  ArrayClear(this.m_modKeybindsConflictRaw);
   ArrayClear(this.m_modKeybindsSharedNames);
   ArrayClear(this.m_modKeybindsSharedLists);
   // Native results go into a variable first: used inline the call doesn't run.
@@ -126,6 +148,7 @@ private func ModKeybindsCheckConflicts() -> String {
     if StrLen(lists[i]) > 0 {
       ArrayPush(this.m_modKeybindsConflictNames, names[i]);
       ArrayPush(this.m_modKeybindsConflictLists, this.ModKeybindsRows(lists[i], names, vars));
+      ArrayPush(this.m_modKeybindsConflictRaw, lists[i]);
       // For the popup: this entry under its key, when the key is of the device in view.
       if Equals(StrBeginsWith(NameToString(keys[i]), "IK_Pad"), this.m_modKeybindsPadMode) {
         let own = ModKeybindsEntryLabel(vars[i], false);
@@ -148,6 +171,10 @@ private func ModKeybindsCheckConflicts() -> String {
     i += 1;
   }
   let lines = "";
+  ArrayClear(this.m_modKeybindsPanelKeys);
+  ArrayClear(this.m_modKeybindsPanelIcons);
+  ArrayClear(this.m_modKeybindsPanelRows);
+  ArrayClear(this.m_modKeybindsPanelMore);
   i = 0;
   while i < ArraySize(sharedKeys) {
     // Long action names are cut: the row has the key at its right end.
@@ -161,6 +188,11 @@ private func ModKeybindsCheckConflicts() -> String {
     if sharedCounts[i] > 2 {
       lines += ", +" + IntToString(sharedCounts[i] - 2) + " more";
     }
+    // Side panel: the key's icon and its actions, the color set when an entry is hovered.
+    ArrayPush(this.m_modKeybindsPanelKeys, sharedKeys[i]);
+    ArrayPush(this.m_modKeybindsPanelIcons, sharedIcons[i]);
+    ArrayPush(this.m_modKeybindsPanelRows, sharedLabels[i]);
+    ArrayPush(this.m_modKeybindsPanelMore, sharedCounts[i] > 2 ? sharedCounts[i] - 2 : 0);
     i += 1;
   }
   this.m_modKeybindsConflictLines = lines;
@@ -189,46 +221,133 @@ private func ModKeybindsRows(list: String, names: array<CName>, vars: array<ref<
   return rows;
 }
 
-// Popup text when the conflicts changed since the last popup, else "".
+// Notes the keys as they are now: the next apply compares with them.
 @addMethod(SettingsMainGameController)
-private func ModKeybindsConflictPopup() -> String {
-  let lines = this.ModKeybindsCheckConflicts();
-  // Told once per device view: the first letter says which.
-  let notice = ModKeybindsMenu_ConflictNotice((this.m_modKeybindsPadMode ? "P" : "K") + lines);
-  if !notice {
-    return "";
+private func ModKeybindsSnapshot() -> Void {
+  ArrayClear(this.m_modKeybindsSnapNames);
+  ArrayClear(this.m_modKeybindsSnapKeys);
+  let vars = this.ModKeybindsKeyVars();
+  for v in vars {
+    ArrayPush(this.m_modKeybindsSnapNames, v.GetName());
+    ArrayPush(this.m_modKeybindsSnapKeys, v.GetValue());
   }
-  // The popup has no scrolling: a few keys here, the side panel of each key names what shares it.
-  let keys = StrSplit(lines, "\n");
-  let shown = "";
+}
+
+// Popup text for the entries whose key changed since the snapshot and now conflicts: each with its key
+// and what it conflicts with, or "".
+@addMethod(SettingsMainGameController)
+private func ModKeybindsNewConflicts() -> String {
+  this.ModKeybindsCheckConflicts();
+  let vars = this.ModKeybindsKeyVars();
+  let names: array<CName>;
+  for v in vars {
+    ArrayPush(names, v.GetName());
+  }
+  let rows = "";
   let count = 0;
-  for key in keys {
-    if StrLen(key) > 0 {
-      if count < 5 {
-        shown += "\n" + key;
+  for v in vars {
+    let s = ArrayFindFirst(this.m_modKeybindsSnapNames, v.GetName());
+    let changed = s < 0 || NotEquals(this.m_modKeybindsSnapKeys[s], v.GetValue());
+    let c = ArrayFindFirst(this.m_modKeybindsConflictNames, v.GetName());
+    if changed && c >= 0 {
+      if count < 3 {
+        // Native results go into a variable first: used inline the call doesn't run.
+        let keyText = ModKeybindsMenu_KeyText(v.GetValue());
+        rows += "\n[" + ModKeybindsKeyIcon(v) + "|" + keyText + "]  " + ModKeybindsEntryLabel(v, false);
+        let others = StrSplit(this.m_modKeybindsConflictRaw[c], ",");
+        let shown = 0;
+        for other in others {
+          let j = ArrayFindFirst(names, StringToName(other));
+          if j >= 0 {
+            if shown < 3 {
+              // The row has no wrapping: long names are cut.
+              let label = ModKeybindsEntryLabel(vars[j], false);
+              if StrLen(label) > 36 {
+                label = StrLeft(label, 34) + "...";
+              }
+              rows += "\n    with " + label;
+            }
+            shown += 1;
+          }
+        }
+        if shown > 3 {
+          rows += "\n~    +" + IntToString(shown - 3) + " more";
+        }
       }
       count += 1;
     }
   }
-  if count > 5 {
-    shown += "\n~+" + IntToString(count - 5) + " more keys";
+  if count == 0 {
+    return "";
   }
-  return "Conflicting keys:" + shown + "\n~Select a key to see what shares it.";
+  if count > 3 {
+    rows += "\n~+" + IntToString(count - 3) + " more keys";
+  }
+  return "New key conflict:" + rows + "\n~The side panel lists every conflict.";
 }
 
-// The side panel lines for an entry: a heading for what it conflicts with (red) and for what it
-// shares its key with (the panel's highlight color), each with its rows, or "".
+// The side panel lines for an entry: what its key conflicts with (red) and is shared with (the panel's
+// highlight color), headed by the key's icon; then, below a rule, every conflicting key of the device
+// in view, the hovered entry's key in red. Or "".
 @addMethod(SettingsMainGameController)
-private func ModKeybindsConflictLine(name: CName) -> String {
+private func ModKeybindsConflictLine(v: ref<ConfigVarName>) -> String {
+  let name = v.GetName();
+  let icon = ModKeybindsKeyIcon(v);
   let text = "";
   let i = ArrayFindFirst(this.m_modKeybindsConflictNames, name);
   if i >= 0 {
-    text = "<Rich color=\"MainColors.Red\">CONFLICTS WITH:</>" + this.m_modKeybindsConflictLists[i];
+    text = icon + "  <Rich color=\"MainColors.Red\">CONFLICTS WITH</>" + this.m_modKeybindsConflictLists[i];
   }
   let j = ArrayFindFirst(this.m_modKeybindsSharedNames, name);
   if j >= 0 {
-    text += (StrLen(text) > 0 ? "\n\n" : "") + "<Rich " + this.m_descriptionWarningRichColor + ">SHARED WITH:</>"
+    text += (StrLen(text) > 0 ? "\n\n" : "") + icon + "  <Rich " + this.m_descriptionWarningRichColor + ">IS SHARED WITH</>"
       + this.m_modKeybindsSharedLists[j];
+  }
+  let count = ArraySize(this.m_modKeybindsPanelKeys);
+  if count > 0 {
+    text += (StrLen(text) > 0 ? "\n\n" : "") + "<Rich color=\"MainColors.Grey\">________________________</>\n\n"
+      + "<Rich color=\"MainColors.Grey\" size=\"30\">ALL CONFLICTS (" + IntToString(count) + (count == 1 ? " KEY)" : " KEYS)") + "</>";
+    // A few one-line rows, the hovered entry's key first: the panel has no scrolling and ends above the
+    // button hints.
+    // In red when the hovered entry is part of that key's conflict, not only on the key.
+    let own = i >= 0 ? ArrayFindFirst(this.m_modKeybindsPanelKeys, v.GetValue()) : -1;
+    let order: array<Int32>;
+    if own >= 0 {
+      ArrayPush(order, own);
+    }
+    let k = 0;
+    while k < count {
+      if k != own {
+        ArrayPush(order, k);
+      }
+      k += 1;
+    }
+    let shown = 0;
+    for at in order {
+      if shown < 4 {
+        // One line per key: the second name moves into "+N more" when both don't fit, and a single long
+        // name is cut.
+        let row = this.m_modKeybindsPanelRows[at];
+        let left = this.m_modKeybindsPanelMore[at];
+        let first: String;
+        let second: String;
+        if StrLen(row) + (left > 0 ? 9 : 0) > 36 && StrSplitFirst(row, ", ", first, second) {
+          row = first;
+          left += 1;
+        }
+        let more = left > 0 ? ", +" + IntToString(left) + " more" : "";
+        if StrLen(row) + StrLen(more) > 36 {
+          row = StrLeft(row, 33 - StrLen(more)) + "...";
+        }
+        row += more;
+        text += "\n<Rich size=\"12\"> </>\n" + this.m_modKeybindsPanelIcons[at] + "  <Rich color=\""
+          + (at == own ? "MainColors.Red" : "MainColors.Grey") + "\">" + row + "</>";
+      }
+      shown += 1;
+    }
+    if count > 4 {
+      text += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.Grey\">+" + IntToString(count - 4) + " more keys</>";
+    }
   }
   return text;
 }

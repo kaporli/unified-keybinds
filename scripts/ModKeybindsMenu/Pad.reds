@@ -135,6 +135,9 @@ protected cb func OnInitialize() -> Bool {
   this.m_modKeybindsPadMode = ModKeybindsPad.IsPadDevice(bb.GetUint(defs.Device));
   this.m_modKeybindsDeviceCallback = bb.RegisterListenerUint(defs.Device, this, n"OnModKeybindsDevice");
   let result = wrappedMethod();
+  // The keys as the menu opens: the conflict popup names only conflicts a later change makes.
+  this.ModKeybindsSnapshot();
+  ModKeybindsClickGuard.Get().skip = false;
   // The menu is built again when the Control Scheme screen closes; checked once it is up.
   this.QueueEvent(new ModKeybindsSchemeEvent());
   return result;
@@ -202,14 +205,6 @@ private func PopulateCategorySettingsOptions(idx: Int32) -> Void {
   this.m_data[i] = ModKeybindsPad.Filter(all, padNames, names, this.m_modKeybindsPadMode);
   wrappedMethod(idx);
   this.m_data[i] = all;
-  // Keys doing two things at once, listed when Key Bindings opens and they changed since the last time.
-  // Not over an open popup: the list comes the next time.
-  if !IsDefined(this.m_modKeybindsPopup) {
-    let conflicts = this.ModKeybindsConflictPopup();
-    if StrLen(conflicts) > 0 {
-      this.ModKeybindsShowPopup(conflicts);
-    }
-  }
 }
 
 // The game's entries end their wait on any key; an entry of the other kind keeps waiting. A
