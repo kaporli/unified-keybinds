@@ -91,9 +91,10 @@ struct EventRule
 std::map<std::string, std::map<std::string, std::string>> GameKeys(const std::filesystem::path& aUserSettings);
 
 // The hold-only actions for the keys a session starts with (aSaved, else the entries' own keys): the
-// entries of a (Hold) option, keyboard and controller alike, on the same key as another entry of their
-// device. aAll: also the (Hold) actions that share nothing now but may (holdShare). They get the same
-// setup with every event on both devices, so a key shared later counts at once.
+// entries of a (Hold) option on the same key as another entry of their device (on the keyboard, an
+// entry of the game's own options). aAll: also the (Hold) actions that share nothing now but may
+// (holdShare). They get the same setup with every event on both devices, so a key shared later counts
+// at once.
 // aContexts (the merged input contexts): only entries whose actions can react at the same time count.
 std::vector<HoldOnly> HoldOnlyActions(const std::vector<Action>& aActions,
                                       const std::map<std::string, std::string>& aSaved, bool aAll = false,

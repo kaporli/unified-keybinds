@@ -1361,6 +1361,10 @@ std::vector<Keybinds::HoldOnly> Keybinds::HoldOnlyActions(const std::vector<Acti
         {
             if (&b == &a || b.pad != a.pad || !b.place.empty() || StartKey(b, aSaved) != key)
                 continue;
+            // On the keyboard only the game's own options count (as up to 1.8.2): a mod's key or an
+            // Input Loader edit on the same key keeps firing with it, without the long press.
+            if (!a.pad && b.gameOption.empty())
+                continue;
             // Only an action that can react at the same time (one context, one section of the game).
             if (!aContexts.empty() && !ActTogether(aContexts, a.mappings, b.mappings))
                 continue;
