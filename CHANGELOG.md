@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.3 (2026-11-14)
+
+- Fix: a crash when an on-screen key hint showed an action bound to a combination or left unbound, for example the heal item hint with Use Consumable on LB + X. It happened when the HUD appeared or on switching between controller and mouse (since 1.7.0). The hint now shows the game's fallback instead of crashing.
+
 ## 2.0.2 (2026-11-14)
 
 - The conflict popup shows only when an applied key change makes a new conflict, and names the action, its key and what it conflicts with. Applying other settings or opening Key Bindings no longer brings it up.

@@ -17,6 +17,7 @@
 #include <RED4ext/RED4ext.hpp>
 
 #include "AcceptedEvents.hpp"
+#include "KeyIcons.hpp"
 #include "InputKeyNames.hpp"
 #include "InputOverrides.hpp"
 #include "Keybinds.hpp"
@@ -1672,6 +1673,8 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
             Log("Could not hook the game's key binding overrides, mod keys changed in the menu will not apply");
         if (!AcceptedEvents::Attach(aSdk, aHandle))
             Log("Could not hook the game's input event lists (other game version?), hold-only controller buttons apply to the keyboard too");
+        if (!KeyIcons::Attach(aSdk, aHandle))
+            Log("Could not guard the game's key icon lookup (other game version?)");
         // Keys changed in a session are applied on the main thread, once per frame.
         static RED4ext::v1::GameState running{nullptr, [](RED4ext::CGameApplication*) {
                                                   InputOverrides::Update();
@@ -1692,6 +1695,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         StopWatch();
         InputOverrides::Detach(aSdk, aHandle);
         AcceptedEvents::Detach(aSdk, aHandle);
+        KeyIcons::Detach(aSdk, aHandle);
         auto target = GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "CreateFileW");
         if (target && g_createFileW)
             aSdk->hooking->Detach(aHandle, reinterpret_cast<void*>(target));
@@ -1708,7 +1712,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(2, 0, 2);
+    aInfo->version = RED4EXT_V1_SEMVER(2, 0, 3);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

@@ -3,6 +3,9 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
+#include <share.h>
 #include <mutex>
 #include <unordered_map>
 
@@ -59,6 +62,60 @@ std::vector<Object> g_objects; // newest runtime object of each listed action
 std::vector<std::string> g_changed;
 bool g_pad = false; // the device in use is a controller
 std::vector<uint64_t> g_blocked; // hold-only actions giving way to a prompt
+
+#ifdef MKM_DIAG
+// Diagnostic builds: every step below goes to ModKeybindsMenu-diag-<time>.log next to the plugin, flushed per
+// line, so the last line before a crash shows what was being done.
+FILE* g_diag = nullptr;
+
+void Diag(const char* aFormat, ...)
+{
+    if (!g_diag)
+        return;
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    fprintf(g_diag, "%02u:%02u:%02u.%03u [%5lu] ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds,
+            GetCurrentThreadId());
+    va_list args;
+    va_start(args, aFormat);
+    vfprintf(g_diag, aFormat, args);
+    va_end(args);
+    fputc('\n', g_diag);
+    fflush(g_diag);
+}
+
+void OpenDiag()
+{
+    HMODULE self = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&OpenDiag), &self))
+        return;
+    wchar_t path[MAX_PATH];
+    DWORD n = GetModuleFileNameW(self, path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return;
+    std::wstring file(path, n);
+    file.resize(file.find_last_of(L"\\/") + 1);
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    wchar_t name[64];
+    swprintf(name, 64, L"ModKeybindsMenu-diag-%04u%02u%02u-%02u%02u%02u.log", t.wYear, t.wMonth, t.wDay, t.wHour,
+             t.wMinute, t.wSecond);
+    // Shared, so it can be read while the game runs.
+    g_diag = _wfsopen((file + name).c_str(), L"w", _SH_DENYNO);
+}
+
+const char* DiagLists(uint8_t* aObject)
+{
+    static char text[256];
+    auto in = reinterpret_cast<int32_t**>(aObject + kLists);
+    snprintf(text, sizeof(text), "in %p kb %p pad %p", static_cast<void*>(in[0]), static_cast<void*>(in[2]),
+             static_cast<void*>(in[4]));
+    return text;
+}
+#else
+#define Diag(...) ((void)0)
+#endif
 
 EventList* List(uint8_t* aObject, int aList)
 {
@@ -152,10 +209,16 @@ void Apply(Object& aObject, const Keybinds::EventRule& aRule)
         return;
     if (!aObject.checked)
     {
+        Diag("check %s obj %p", aRule.action.c_str(), static_cast<void*>(aObject.object));
         if (!Plausible(aObject.object, static_cast<uint32_t>(aObject.loaded.size()), false))
+        {
+            Diag("  implausible, left alone");
             return;
+        }
         aObject.checked = true;
     }
+    Diag("write %s obj %p %s pad %d", aRule.action.c_str(), static_cast<void*>(aObject.object),
+         DiagLists(aObject.object), g_pad ? 1 : 0);
     auto keyboard = Content(aObject.loaded, aRule.keyboard);
     auto pad = Content(aObject.loaded, aRule.controller);
     for (int list : {kInUseList, kKeyboardList, kControllerList})
@@ -169,6 +232,7 @@ void Apply(Object& aObject, const Keybinds::EventRule& aRule)
     if (std::find(g_blocked.begin(), g_blocked.end(), aObject.hash) != g_blocked.end())
         inUse = Content(inUse, Keybinds::EventMode::NoHold);
     Write(List(aObject.object, kInUseList), inUse);
+    Diag("  done");
 }
 
 const Keybinds::EventRule* Find(uint64_t aAction)
@@ -236,8 +300,9 @@ void* Init_Hook(void* aObject, uint64_t aAction, uint64_t aMapping, uint8_t aFla
     auto result = g_initOriginal(aObject, aAction, aMapping, aFlag);
     std::lock_guard lock(g_mutex);
     // The game builds the objects again when a session starts: only the newest one is live.
-    if (Find(aAction))
+    if (auto rule = Find(aAction))
     {
+        Diag("new object %s obj %p", rule->action.c_str(), aObject);
         std::erase_if(g_objects, [&](const auto& o) { return o.hash == aAction; });
         g_objects.push_back({aAction, static_cast<uint8_t*>(aObject), {}});
     }
@@ -259,8 +324,10 @@ bool Register_Hook(void* aRegistry, uint64_t aContext, uint64_t aAction, uint64_
         if (o.loaded.empty())
         {
             auto pad = List(o.object, kControllerList);
+            Diag("first registration %s obj %p", rule->action.c_str(), static_cast<void*>(o.object));
             if (!Readable(pad, sizeof(EventList)) || !Plausible(o.object, pad->size, true))
             {
+                Diag("  unexpected layout, left alone");
                 g_changed.push_back(rule->action + " left alone: unexpected layout (other game version?)");
                 continue;
             }
@@ -279,6 +346,10 @@ bool AcceptedEvents::Attach(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHan
 {
     g_registerTarget = FindPattern(kRegisterPattern);
     g_initTarget = FindPattern(kInitPattern);
+#ifdef MKM_DIAG
+    OpenDiag();
+    Diag("diagnostic build, register %p init %p", g_registerTarget, g_initTarget);
+#endif
     if (!g_registerTarget || !g_initTarget)
         return false;
     if (!aSdk->hooking->Attach(aHandle, g_initTarget, reinterpret_cast<void*>(&Init_Hook),
@@ -329,6 +400,7 @@ void AcceptedEvents::SetSide(const std::string& aAction, bool aPad, Keybinds::Ev
         if (r.hash != hash || mode == aMode)
             continue;
         mode = aMode;
+        Diag("set %s %s %s", aAction.c_str(), aPad ? "controller" : "keyboard", ModeName(aMode));
         for (auto& o : g_objects)
         {
             if (o.hash == hash)
@@ -340,6 +412,7 @@ void AcceptedEvents::SetSide(const std::string& aAction, bool aPad, Keybinds::Ev
 void AcceptedEvents::SetDevice(bool aPad)
 {
     std::lock_guard lock(g_mutex);
+    Diag("device %s, %zu objects", aPad ? "controller" : "keyboard", g_objects.size());
     g_pad = aPad;
     for (auto& o : g_objects)
     {
@@ -356,6 +429,7 @@ void AcceptedEvents::SetDevice(bool aPad)
 void AcceptedEvents::Recheck()
 {
     std::lock_guard lock(g_mutex);
+    Diag("session change: check every object again");
     for (auto& o : g_objects)
         o.checked = false;
 }
@@ -369,6 +443,7 @@ void AcceptedEvents::SetBlocked(const std::vector<std::string>& aActions)
     if (blocked == g_blocked)
         return;
     g_blocked = std::move(blocked);
+    Diag("prompt block: %zu actions", g_blocked.size());
     for (auto& o : g_objects)
     {
         if (auto rule = Find(o.hash))

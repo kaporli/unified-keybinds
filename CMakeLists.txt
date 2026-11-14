@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(ModKeybindsMenu VERSION 2.0.2 LANGUAGES CXX)
+project(ModKeybindsMenu VERSION 2.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,8 @@ add_library(ModKeybindsMenu SHARED
   src/NativeSettings.hpp
   src/AcceptedEvents.cpp
   src/AcceptedEvents.hpp
+  src/KeyIcons.cpp
+  src/KeyIcons.hpp
   src/Rcf.cpp
   src/Rcf.hpp
   src/InputKeyNames.hpp
@@ -34,13 +36,21 @@ option(MKM_TEST "Build test natives" OFF)
 if(MKM_TEST)
   target_compile_definitions(ModKeybindsMenu PRIVATE MKM_TEST)
 endif()
+# Diagnostic builds log every write to the game's accepted event lists to a file of their own, flushed per
+# line, and package into package-diag/.
+option(MKM_DIAG "Build with the accepted events log" OFF)
+set(PKG_ROOT "${CMAKE_SOURCE_DIR}/package")
+if(MKM_DIAG)
+  target_compile_definitions(ModKeybindsMenu PRIVATE MKM_DIAG)
+  set(PKG_ROOT "${CMAKE_SOURCE_DIR}/package-diag")
+endif()
 target_compile_options(ModKeybindsMenu PRIVATE /W3 /utf-8)
 target_link_libraries(ModKeybindsMenu PRIVATE RED4ext::SDK shell32 ole32)
 
 # Package layout: red4ext/plugins/ModKeybindsMenu/{ModKeybindsMenu.dll, scripts/} and the CET companion
-set(PKG "${CMAKE_SOURCE_DIR}/package/red4ext/plugins/ModKeybindsMenu")
+set(PKG "${PKG_ROOT}/red4ext/plugins/ModKeybindsMenu")
 # Companion for Native Settings UI key bindings, run by CET when installed
-set(CET "${CMAKE_SOURCE_DIR}/package/bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu")
+set(CET "${PKG_ROOT}/bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu")
 add_custom_command(TARGET ModKeybindsMenu POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${PKG}/scripts"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PKG}/scripts"
