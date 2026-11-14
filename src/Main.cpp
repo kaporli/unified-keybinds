@@ -249,6 +249,8 @@ bool Generate(const fs::path& aBase)
 
 void EnsureCollected();
 
+fs::path ContextsPath();
+
 // Input Loader's merged mappings with the single-key mod mappings marked rebindable. Returns
 // false to let the game read the file as it is.
 bool GenerateMappings(LPCWSTR aMerged)
@@ -263,7 +265,13 @@ bool GenerateMappings(LPCWSTR aMerged)
             std::lock_guard lock(g_mutex);
             actions = g_actions;
         }
-        auto marked = Keybinds::MarkRebindable(aMerged, actions, UserSettings::SavedKeys(g_store), Log);
+        std::vector<Keybinds::ComboHint> hints;
+        auto marked = Keybinds::MarkRebindable(aMerged, actions, UserSettings::SavedKeys(g_store), Log, &hints);
+        // Hints of actions on a key combination show its main key (see KeyIcons).
+        std::vector<KeyIcons::Combo> combos;
+        for (const auto& c : Keybinds::ComboActions(ContextsPath(), hints))
+            combos.push_back({c.action, c.pad, c.key, c.modifier});
+        KeyIcons::SetCombos(combos);
         if (marked.empty())
             return;
         ok = UserSettings::WriteFile(g_mappings, marked);
@@ -1712,7 +1720,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"Mod Keybinds Menu";
     aInfo->author = L"Elias";
-    aInfo->version = RED4EXT_V1_SEMVER(2, 0, 3);
+    aInfo->version = RED4EXT_V1_SEMVER(2, 0, 4);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

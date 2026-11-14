@@ -1111,7 +1111,8 @@ constexpr std::size_t kMaxCombos = 30;
 } // namespace
 
 std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<Action>& aActions,
-                                     const std::map<std::string, std::string>& aSaved, const LogFn& aLog)
+                                     const std::map<std::string, std::string>& aSaved, const LogFn& aLog,
+                                     std::vector<ComboHint>* aHints)
 {
     pugi::xml_document doc;
     if (!doc.load_file(aMerged.c_str()))
@@ -1216,6 +1217,9 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     std::set<std::string> declared;
     for (auto mapping : bindings.children("mapping"))
     {
+        // A combination goes after the mapping's other buttons: the game names an action's key by its
+        // first button of a device, and a buttonGroup first left the other device's key without a name.
+        std::vector<pugi::xml_node> combos;
         for (auto button : mapping.children("button"))
         {
             auto combo = aCombos.find(button.attribute("overridableUI").as_string());
@@ -1245,8 +1249,13 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
                 ++count;
             }
             button.attribute("id") = groupId.c_str();
+            combos.push_back(button);
+            if (aHints)
+                aHints->push_back({mapping.attribute("name").as_string(), IsPad(modifier), key, modifier});
             changed = true;
         }
+        for (auto button : combos)
+            mapping.append_move(button);
     }
     if (!changed)
         return {};
@@ -1254,6 +1263,31 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     std::ostringstream out;
     doc.save(out, "    ");
     return out.str();
+}
+
+std::vector<Keybinds::ActionCombo> Keybinds::ComboActions(const fs::path& aContexts, const std::vector<ComboHint>& aHints)
+{
+    std::vector<ActionCombo> out;
+    if (aHints.empty())
+        return out;
+    pugi::xml_document doc;
+    if (!doc.load_file(aContexts.c_str()))
+        return out;
+    std::set<std::pair<std::string, bool>> seen;
+    for (auto context : doc.child("bindings").children("context"))
+    {
+        for (auto action : context.children("action"))
+        {
+            std::string map = action.attribute("map").as_string();
+            std::string name = action.attribute("name").as_string();
+            for (const auto& h : aHints)
+            {
+                if (h.mapping == map && seen.insert({name, h.pad}).second)
+                    out.push_back({name, h.pad, h.key, h.modifier});
+            }
+        }
+    }
+    return out;
 }
 
 std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions)

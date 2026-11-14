@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.4 (2026-11-15)
+
+- On-screen key hints of an action on a key combination show both keys with the game's icons, for example the heal item hint with Use Consumable on Ctrl + X or LB + X. They showed no key before.
+- Fix: a key combination on one device could leave the action's hints without a key on the other device.
+
 ## 2.0.3 (2026-11-14)
 
 - Fix: a crash when an on-screen key hint showed an action bound to a combination or left unbound, for example the heal item hint with Use Consumable on LB + X. It happened when the HUD appeared or on switching between controller and mouse (since 1.7.0). The hint now shows the game's fallback instead of crashing.

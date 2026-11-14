@@ -64,6 +64,10 @@ The Control Scheme screen shows your bindings. Defaults, then Crouch and Dodge, 
   ![The waiting prompt, keyboard and controller](screenshots/prompt.png)
 
   ![The restart popup after binding vanilla Quickload to Ctrl + F9](screenshots/restart-popup.png)
+
+  On-screen key hints show the whole combination with the game's own icons, for example the heal item hint with Use Consumable on Ctrl + X or LB + X.
+
+  ![The heal item hint on Ctrl + X with a keyboard and on LB + X with a controller](screenshots/combination-hint.png)
 - A (Hold) action can share its key with another action: tap for the other action, hold for this one. For example Sprint (Hold) and Dodge on B, or Crouch (Hold) and Dodge/Dash on Mouse 4. The hold only counts on the device where the key is shared, so a lone Sprint (Hold) key stays instant. A shared key or button works as soon as you bind it. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
 
   ![Crouch (Hold) and Dodge/Dash on Mouse 4, Sprint (Hold) and Dodge on B, with their side panels](screenshots/shared-key.png)

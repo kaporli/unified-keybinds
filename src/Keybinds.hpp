@@ -204,8 +204,30 @@ std::vector<Action> Collect(const std::filesystem::path& aRoot, const std::strin
 // controller buttons for a controller entry) goes into the action's mapping as a buttonGroup, as many
 // as the game allows. A controller entry without a default button gets a row with its saved button.
 // The keyboard buttons of a game option get the name of our entry for it (kKeyPrefix).
+// A key combination written into a mapping: its device, its main key (the one pressed last) and the
+// key held before it.
+struct ComboHint
+{
+    std::string mapping;
+    bool pad = false;
+    std::string key;
+    std::string modifier;
+};
+
 std::string MarkRebindable(const std::filesystem::path& aMerged, const std::vector<Action>& aActions,
-                           const std::map<std::string, std::string>& aSaved, const LogFn& aLog);
+                           const std::map<std::string, std::string>& aSaved, const LogFn& aLog,
+                           std::vector<ComboHint>* aHints = nullptr);
+
+// The input actions (of any context in aContexts) that use a mapping in aHints, each with the hint's
+// device, main key and modifier.
+struct ActionCombo
+{
+    std::string action;
+    bool pad = false;
+    std::string key;
+    std::string modifier;
+};
+std::vector<ActionCombo> ComboActions(const std::filesystem::path& aContexts, const std::vector<ComboHint>& aHints);
 
 // aBaseOptions with one group per section added. Groups from an older run are replaced.
 std::string MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions);

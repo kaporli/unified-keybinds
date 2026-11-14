@@ -296,3 +296,91 @@ private func ModKeybindsComboText(keys: array<CName>, v: ref<ConfigVarName>) -> 
   }
   return text;
 }
+
+// On-screen hints of an action on a key combination: the plugin draws the main key and calls Update
+// with the icon of the key held before it. That icon and a "+" go in front of the hint's key, in the
+// nearest row (horizontal panel) above it, as the game's own LB + RB hint does. Returns 1 when shown,
+// 2 when taken away, 0 when the hint has no row (logged by test builds).
+public abstract class ModKeybindsComboIcon {
+  public static func Update(icon: ref<inkWidget>, atlas: ResRef, part: CName, show: Bool) -> Int32 {
+    let child: wref<inkWidget> = icon;
+    let row: ref<inkHorizontalPanel>;
+    let depth = 0;
+    while IsDefined(child) && !IsDefined(row) && depth < 6 {
+      let parent = child.GetParentWidget();
+      row = parent as inkHorizontalPanel;
+      if !IsDefined(row) {
+        child = parent;
+      }
+      depth += 1;
+    }
+    if !IsDefined(row) {
+      return 0;
+    }
+    let held = ModKeybindsComboIcon.Find(row, n"ModKeybindsHeldKey") as inkImage;
+    let plus = ModKeybindsComboIcon.Find(row, n"ModKeybindsHeldPlus") as inkText;
+    if !show {
+      if IsDefined(held) { held.SetVisible(false); }
+      if IsDefined(plus) { plus.SetVisible(false); }
+      return 2;
+    }
+    if !IsDefined(held) {
+      held = new inkImage();
+      held.SetName(n"ModKeybindsHeldKey");
+      held.SetVAlign(inkEVerticalAlign.Center);
+      row.AddChildWidget(held);
+      plus = new inkText();
+      plus.SetName(n"ModKeybindsHeldPlus");
+      plus.SetFontFamily("base\\gameplay\\gui\\fonts\\raj\\raj.inkfontfamily", n"Medium");
+      plus.SetVAlign(inkEVerticalAlign.Center);
+      plus.SetMargin(4.0, 0.0, 4.0, 0.0);
+      plus.SetFitToContent(true);
+      plus.SetText("+");
+      row.AddChildWidget(plus);
+    }
+    let size = icon.GetSize();
+    held.SetAtlasResource(atlas);
+    held.SetTexturePart(part);
+    held.SetSize(size);
+    held.SetTintColor(icon.GetTintColor());
+    held.SetVisible(true);
+    plus.SetFontSize(Cast<Int32>(size.Y * 0.6));
+    plus.SetTintColor(icon.GetTintColor());
+    plus.SetVisible(true);
+    ModKeybindsComboIcon.MoveBefore(row, held, child);
+    ModKeybindsComboIcon.MoveBefore(row, plus, child);
+    return 1;
+  }
+
+  private static func Find(row: ref<inkCompoundWidget>, name: CName) -> ref<inkWidget> {
+    let i = 0;
+    while i < row.GetNumChildren() {
+      let w = row.GetWidgetByIndex(i);
+      if Equals(w.GetName(), name) {
+        return w;
+      }
+      i += 1;
+    }
+    return null;
+  }
+
+  // ReorderChild takes the widget out first, then inserts it at the index.
+  private static func MoveBefore(row: ref<inkCompoundWidget>, widget: wref<inkWidget>, child: wref<inkWidget>) -> Void {
+    let index = ModKeybindsComboIcon.IndexOf(row, child);
+    if ModKeybindsComboIcon.IndexOf(row, widget) < index {
+      index -= 1;
+    }
+    row.ReorderChild(widget, index);
+  }
+
+  private static func IndexOf(row: ref<inkCompoundWidget>, child: wref<inkWidget>) -> Int32 {
+    let i = 0;
+    while i < row.GetNumChildren() {
+      if row.GetWidgetByIndex(i) == child {
+        return i;
+      }
+      i += 1;
+    }
+    return 0;
+  }
+}
