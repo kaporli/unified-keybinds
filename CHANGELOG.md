@@ -2,7 +2,7 @@
 
 ## 2.0.1 (2026-11-14)
 
-- Fix: Sprint, Scan and other (Hold) actions reacted late on the keyboard, or not to a tap, when a mod or an Input Loader edit used the same key (since 2.0.0). The (Hold) action waited for a long press, and the mod's action lost its own hold. On the keyboard only the game's own key binding options share a key again, as in 1.8.2.
+- Fix: Sprint, Scan and other (Hold) actions reacted late on the keyboard, or not to a tap, when a mod or an Input Loader edit used the same key (since 2.0.0). The (Hold) action waited for a long press. On the keyboard only the game's own key binding options share a key again, as in 1.8.2.
 
 ## 2.0.0 (2026-11-14)
 
