@@ -6,116 +6,85 @@ Every mod key and controller button, rebindable in the game's own Key Bindings m
 
 ![The same menu with a controller](screenshots/hero-controller-combination.jpg)
 
-The game only lets you rebind its own keyboard keys, and many mods keep theirs in input files or Mod Settings, or hardcode them. Unified Keybinds adds a section per installed mod to Settings > Controls > Key Bindings, built from your mods at every startup, so you rebind everything in one place, with a keyboard or a controller.
-
-Formerly Native Mod Keybinds (and before that Mod Keybinds Menu). Files and folders keep their names, so updating works as before.
+One section per installed mod in **Settings > Controls > Key Bindings**, built at every startup. Rebind everything in one place, with a keyboard or a controller.
 
 ## Features
 
-Keyboard on the left, controller on the right in the images (stacked in the inventory hints).
+Images: keyboard left, controller right.
 
-- One section per mod, named from the mod's files, for example *"Mod: Let There Be Flight"* with *"Vehicle Flight Linear Brake"*. Add or remove a mod and the sections follow. Keys a mod never made rebindable are listed too, for example Enhanced Vehicle System's F1 to F4.
+- **One section per mod**, named from the mod's files, for example *"Mod: Let There Be Flight"*. Includes keys the mod never made rebindable.
 
   ![Key Bindings with a section per mod](screenshots/key-bindings-mod-sections.jpg)
 
-- Entries for keys the game hard-codes: Confirm, Cancel, Track Waypoint, Cycle Objective, Disassemble, Drop, Unequip, Enable/Disable Comparison, Preview Item / Add Favorite, Sell Junk, Show Hint Overlay, Interaction 2, and the map's Scroll Up, Scroll Down, Filter and Previous/Next Filter. On a controller the same actions, with the game's own names. On-screen hints follow your keys. No More Hard-coded Keybinds is no longer needed and can stay installed.
+- **Hard-coded game keys rebindable**: Confirm, Cancel, Drop, Disassemble, Unequip, Sell Junk, Preview Item / Add Favorite, Comparison, Track Waypoint, Cycle Objective, map filters and more, on keyboard and controller. On-screen hints follow your keys.
 
-  ![The new entries, keyboard left, controller right](screenshots/new-entries.png)
+  ![Entries for hard-coded keys](screenshots/new-entries.png)
 
-  ![Inventory hints, keyboard above controller](screenshots/inventory-hints.png)
+  ![Inventory hints](screenshots/inventory-hints.png)
 
-- Controller rebinding, which the game doesn't offer. Vanilla buttons use the game's names and follow your control scheme (Classic, Dynamic, Alternative), each with its own layout. Sprint (Hold), Crouch (Hold) and Scan (Toggle) get entries too. Mod actions get controller entries when a controller button triggers them. The menu shows controller buttons while you use a controller and keys when you use the keyboard.
+- **Controller rebinding**, vanilla and mod, per control scheme (Classic, Dynamic, Alternative). The menu shows buttons while you use a controller, keys while you use the keyboard.
 
-  ![Control Scheme rows for Crouch (Hold) on L3 and Scan (Toggle) on B](screenshots/control-scheme-shared.png)
+  ![Control Scheme rows](screenshots/control-scheme-shared.png)
 
-- Key combinations on every entry, vanilla included: hold one key or button and press another, for example *"Ctrl + K"* or *"LB + A"*. A key pressed alone is bound alone. Combinations apply after a restart, and a popup names the entries.
+- **Key combinations** on every entry: hold one key or button, press another (*"Ctrl + K"*, *"LB + A"*). On-screen hints show the whole combination.
 
-  ![A combination on a keyboard and on a controller](screenshots/combination.png)
+  ![A combination](screenshots/combination.png)
 
   ![Waiting for a key or button](screenshots/prompt.png)
 
   ![The restart popup](screenshots/restart-popup.png)
 
-  On-screen hints show the whole combination with the game's icons.
+  ![The heal item hint on a combination](screenshots/combination-hint.png)
 
-  ![The heal item hint on Ctrl + X and on LB + X](screenshots/combination-hint.png)
+- **Tap or hold on one key**: a (Hold) action shares its key with another action. Tap for one, hold for the other, for example Crouch (Hold) and Dodge/Dash.
 
-- Tap or hold on one key: a (Hold) action can share its key with another action. Tap for the other, hold for this one, for example Crouch (Hold) and Dodge/Dash on one key. It works as soon as you bind it. While the game shows a prompt on that key (talk, loot, pick up), the prompt comes first.
+  ![Crouch (Hold) and Dodge/Dash on one key](screenshots/shared-key.png)
 
-  ![Crouch (Hold) and Dodge/Dash on one key and on one button](screenshots/shared-key.png)
+- **Conflict warning**: a popup names new conflicts. The side panel lists what the selected key conflicts with, what it is shared with, and every conflicting key. Keys used in different contexts (Jump and the map's Track Waypoint) are not conflicts.
 
-- Conflict warning: when you apply a key that two actions active at the same time now share, a popup names the action and what it conflicts with. The side panel lists what the selected key conflicts with and is shared with, then every conflicting key of the device in view, and stays inside the menu. A key shared by actions never active together (Jump and a map's Track Waypoint on Space) is no conflict.
+  ![The side panel](screenshots/conflict.png)
 
-  ![The conflict popup and the side panel](screenshots/conflict.png)
-
-  ![The side panel ends with "+N more"](screenshots/side-panel-more-cap.png)
-
-- Unbind any entry, keyboard or controller: point at it and press X (Square on a controller). It stays unbound across save loads and restarts. Defaults brings the key back.
-- Keys stay in sync with Mod Settings, Native Settings UI and Redscript Configuration Framework: a change in either menu changes both, and the mod uses it right away.
-- A changed key applies right away. Your keys are kept in a file of their own (`r6/cache/modkeybinds/keys.json`) with a backup, so removing a mod or a crash doesn't cost your bindings.
-- Never changes game or mod files, so mods that edit the settings menu keep working.
+- **Unbind** any entry: point at it and press **X** (Square on a controller). **Defaults** restores it.
+- **Sync** with Mod Settings, Native Settings UI and Redscript Configuration Framework, both ways.
+- Changes apply at once. Keys are stored in a separate file with a backup. No game or mod files are changed.
 
 ## Supported keybind sources
 
-| Where the mod keeps its keys | Supported | Notes |
+| Status | Keybind source | Notes |
 | --- | --- | --- |
-| Input Loader input file (`overridableUI`) | Yes | Most mods, for example Let There Be Flight. A key and a controller button get an entry each. A mod that registers its input file late through Input Loader's plugin interface may only appear from the second launch |
-| Input Loader input file, single key or key combination without `overridableUI` | Yes | For example Enhanced Vehicle System. A controller button in the same mapping gets a controller entry (for example Chipware Expansion, Enhanced Craft) |
-| Mod Settings key option | Yes | Kept in sync both ways. A key combination stays in this menu only: Mod Settings keeps its own single key |
-| Redscript Configuration Framework | Yes | Its own keys are in Input Loader files and Mod Settings. Its hub key (F8) is kept in sync with its Options |
-| Native Settings UI | Yes | From the second launch after you install the mod, single keys (no combinations) |
-| Unified Mod Settings | Yes | Edits Native Settings UI and Mod Settings keys, which show up here |
-| Redscript Configuration Framework hub, for example the DigitalVixen mods | Yes | From the second launch, single keys and controller buttons, with the mod's own names. Kept in sync with the hub both ways |
-| No More Hard-coded Keybinds | Yes | Every action it made rebindable is an entry here, so it is no longer needed. Both can stay installed, nothing is listed twice |
-| Vanilla keyboard keys | Yes | The game's own entries, with key combinations. A single key is also kept in the game's settings, so removing the mod keeps it |
-| Vanilla controller buttons | Yes | Part of the main file (was an optional file before 2.0.0). One layout per control scheme. After you change the scheme, the controller entries follow it at once |
-| Cyber Engine Tweaks hotkeys (`registerHotkey`, `registerInput`) | No | Stay in the CET overlay |
+| Native | Input Loader input files (for example Let There Be Flight, Enhanced Vehicle System) | Keys and controller buttons, also ones the mod didn't make rebindable. A mod that registers its file late may appear from the second launch. |
+| Native | Mod Settings key options | Synced both ways. Combinations stay in this menu. |
+| Native | Redscript Configuration Framework | Hub key (F8) synced with RCF's Options. |
+| 2nd launch | Native Settings UI, Unified Mod Settings | Single keys. Synced both ways. |
+| 2nd launch | Mods with keys in RCF's hub, like the DigitalVixen mods | With the mod's own names. Single keys and controller buttons. Synced both ways. |
+| Native | No More Hard-coded Keybinds | Covered: every key it adds is an entry. Both can be installed. |
+| Native | Vanilla keys and buttons | The game's own entries, with combinations. Controller layouts per control scheme. |
+| Not yet | Cyber Engine Tweaks hotkeys | Stay in the CET overlay. |
 
 ## Limitations
 
 > [!WARNING]
-> - Controller: an action is listed when exactly one controller button triggers it. Movement, aiming, attacking and stick axes stay as they are.
-> - Key combinations apply after a restart. The game takes about 30 in total.
-> - No entry for the map's zoom: the mouse wheel stays as the game has it.
+> - Controller: only actions on exactly one button are listed. Movement, aiming, attacking and sticks stay as they are.
+> - Key combinations apply after a restart, about 30 in total.
+> - Map zoom stays on the mouse wheel.
 
 ## Requirements
 
 - Cyberpunk 2077 **2.5**
-- [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380)
-- [redscript](https://www.nexusmods.com/cyberpunk2077/mods/1511)
-- [Input Loader](https://www.nexusmods.com/cyberpunk2077/mods/4575)
-- [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
-- [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885) (optional, for keeping keys in sync with mods that also offer them there)
-- [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107) and [Native Settings UI](https://www.nexusmods.com/cyberpunk2077/mods/3518) (optional, for the keys of mods that use Native Settings UI)
-- [Redscript Configuration Framework](https://www.nexusmods.com/cyberpunk2077/mods/30726) (optional, for the keys of mods that keep them there)
+- [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380), [redscript](https://www.nexusmods.com/cyberpunk2077/mods/1511), [Input Loader](https://www.nexusmods.com/cyberpunk2077/mods/4575), [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
+- Optional: [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885), [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107) with [Native Settings UI](https://www.nexusmods.com/cyberpunk2077/mods/3518), [Redscript Configuration Framework](https://www.nexusmods.com/cyberpunk2077/mods/30726)
 
 ## Installation
 
-Extract the archive into the Cyberpunk 2077 game folder, or install it with Mod Organizer 2 or Vortex. The files go to:
-
-```
-red4ext/plugins/ModKeybindsMenu/ModKeybindsMenu.dll
-red4ext/plugins/ModKeybindsMenu/scripts/
-bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu/init.lua
-```
-
-Updating from 1.x: the optional file Vanilla Controller Rebinding is part of the main file now. Remove it before you install (in Mod Organizer 2 or Vortex, uninstall it), or its older script replaces the new one.
+Mod Organizer 2, Vortex, or extract into the game folder.
 
 ## Uninstallation
 
-Remove the `red4ext/plugins/ModKeybindsMenu` and `bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu` folders. Optionally delete `r6/cache/modkeybinds/`, where the mod keys are kept. Nothing is written to your save, and your game settings stay as they are.
-
-Updating from 1.0.0: start the game once with 1.0.1 before uninstalling, so your `UserSettings.json` gets cleaned up.
-
-## Credits
-
-Uses [RED4ext.SDK](https://github.com/wopss/RED4ext.SDK), [pugixml](https://github.com/zeux/pugixml) and [nlohmann/json](https://github.com/nlohmann/json). The input manager layouts and address hashes come from [Mod Settings](https://github.com/jackhumbert/mod_settings).
+Remove `red4ext/plugins/ModKeybindsMenu` and `bin/x64/plugins/cyber_engine_tweaks/mods/ModKeybindsMenu`. Optionally delete `r6/cache/modkeybinds/` (your mod keys). Nothing is written to your save. Game settings are kept.
 
 ## For mod authors
 
-Your action shows up if it has a `<button id="IK_..." overridableUI="yourActionName" />` in an input file loaded by Input Loader. A `Button` mapping with a single keyboard or mouse key or key combination (`buttonGroup`) and no `overridableUI` shows up too, under the mapping's name. A controller button in the same mapping gets a controller entry, also when it has the key's `overridableUI`. Nothing else is needed.
-
-For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.json`:
+Any Input Loader action with `overridableUI`, or a `Button` mapping with a single key or `buttonGroup`, shows up automatically. For nicer names, ship `r6/config/modkeybinds/<YourMod>.json`:
 
 ```json
 {
@@ -124,11 +93,11 @@ For nicer names than the generated ones, ship `r6/config/modkeybinds/<YourMod>.j
 }
 ```
 
-`_section` names the section for every action in that file. Names can also be `LocKey#...` keys.
+Names can be `LocKey#...` keys.
 
-## Source
+## Credits and source
 
-[github.com/kaporli/unified-keybinds](https://github.com/kaporli/unified-keybinds), MIT, see [LICENSE](LICENSE).
+Uses [RED4ext.SDK](https://github.com/wopss/RED4ext.SDK), [pugixml](https://github.com/zeux/pugixml) and [nlohmann/json](https://github.com/nlohmann/json). Input manager layouts and address hashes from [Mod Settings](https://github.com/jackhumbert/mod_settings). MIT, see [LICENSE](LICENSE).
 
 ## Technical notes
 

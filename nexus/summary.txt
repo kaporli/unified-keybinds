@@ -1,1 +1,1 @@
-Every mod key and controller button, rebindable in the game's own Key Bindings menu. One section per mod, key and controller combinations, tap and hold on one key, a conflict warning, and entries for keys the game and No More Hard-coded Keybinds left fixed. No game or mod files are changed.
+Every mod key and controller button, rebindable in the game's own Key Bindings menu. One section per mod, hard-coded game keys rebindable, controller rebinding, key and controller combinations, tap and hold on one key, conflict warnings. No game or mod files are changed.
