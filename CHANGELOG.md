@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.0 (2026-11-18)
+
+Entries for the keys No More Hard-coded Keybinds and the game left fixed, on keyboard and controller.
+
+- New entries, keyboard: Confirm, Cancel, Track Waypoint, Cycle Objective, Disassemble, Drop, Unequip, Enable/Disable Comparison, Preview Item / Add Favorite, Sell Junk, Show Hint Overlay, Interaction 2, and the map's Scroll Up, Scroll Down, Filter and Previous/Next Filter. They take combinations and shared keys like every other entry.
+- New entries, controller: Preview Item / Add Favorite, Drop, Disassemble, Sell Junk, Enable/Disable Comparison, Unequip, Track Waypoint, Track Job (Journal), Previous/Next Filter, Scroll Up, Scroll Down and Filter (map), all named with the game's own texts.
+- No More Hard-coded Keybinds is no longer needed. It can stay installed, nothing is listed twice. Without it, your saved keys stay valid and the game no longer resets your settings.
+- Removing Unified Keybinds does not reset your settings.
+- Side panel: each block (Conflicts with, Is shared with, All conflicts) stays inside the menu and ends with "+N more". Before, a long list ran off the panel.
+- Previous/Next Filter on the keyboard is the same key as the hub's previous/next tab.
+- The map's zoom has no entry: the mouse wheel stays as the game has it.
+
 ## 2.0.4 (2026-11-15)
 
 - On-screen key hints of an action on a key combination show both keys with the game's icons, for example the heal item hint with Use Consumable on Ctrl + X or LB + X. They showed no key before.

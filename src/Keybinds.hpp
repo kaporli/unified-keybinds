@@ -230,6 +230,8 @@ struct ActionCombo
 std::vector<ActionCombo> ComboActions(const std::filesystem::path& aContexts, const std::vector<ComboHint>& aHints);
 
 // aBaseOptions with one group per section added. Groups from an older run are replaced.
+// Adds the options of No More Hard-coded Keybinds that saved settings may hold, when the game's lack them.
+std::string AddHardCodedOptions(const std::string& aOptions);
 std::string MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions);
 
 // A key binding entry for the conflict check.

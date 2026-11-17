@@ -112,6 +112,112 @@ Copies SchemeCopies(const pugi::xml_document& aDoc, const std::string& aScheme)
     return out;
 }
 
+// The game's menus hard-code these keys. No More Hard-coded Keybinds (NMHK) gave them settings options and
+// names in the mappings. Binds saved from it sit in UserSettings.json under these names, and the game resets
+// all settings when it finds an option there that is not defined. Without NMHK the plugin defines the same
+// options (AddHardCodedOptions) and puts the names on the same mappings' keys (AddHardCodedNames).
+struct HardCodedOption
+{
+    const char* name;
+    const char* group;
+    int order;
+    const char* label; // the game's text: LocKey#, or a format with %
+    std::vector<const char*> keys;
+};
+
+const std::vector<HardCodedOption>& HardCodedOptions()
+{
+    static const std::vector<HardCodedOption> options = {
+        {"choice2", "/key_bindings/SettingsLocomotion", 41, "LocKey#77798", {}},
+        {"confirm", "/key_bindings/SettingsUI", 15, "LocKey#15426", {}},
+        {"cancelSelection", "/key_bindings/SettingsUI", 16, "LocKey#77920", {}},
+        {"mapTrack", "/key_bindings/SettingsUI", 17, "LocKey#77925", {}},
+        {"cycleObjectives", "/key_bindings/SettingsUI", 18, "LocKey#77806", {}},
+        {"disassembleItem", "/key_bindings/SettingsUI", 19, "LocKey#77935", {}},
+        {"dropItem", "/key_bindings/SettingsUI", 20, "LocKey#77937", {}},
+        {"unequipItem", "/key_bindings/SettingsUI", 21, "LocKey#77939", {}},
+        {"compareItem", "/key_bindings/SettingsUI", 22, "% / %", {"LocKey#78774", "LocKey#78775"}},
+        {"equipVisuals", "/key_bindings/SettingsUI", 23, "% / %", {"LocKey#51865", "LocKey#95198"}},
+        {"sellJunk", "/key_bindings/SettingsUI", 24, "LocKey#77940", {}},
+        {"contextHelp", "/key_bindings/SettingsUI", 25, "LocKey#77907", {}},
+        {"filterNavUp", "/key_bindings/SettingsUI", 28, "% (Map)", {"LocKey#77801"}},
+        {"filterNavDown", "/key_bindings/SettingsUI", 29, "% (Map)", {"LocKey#77802"}},
+        {"filterNavToggle", "/key_bindings/SettingsUI", 30, "%", {"LocKey#15393"}}};
+    return options;
+}
+
+// Name -> (mapping, keyboard key) it goes on, as NMHK placed it (the game's default keys).
+const std::vector<std::pair<const char*, std::pair<const char*, const char*>>>& HardCodedKeys()
+{
+    static const std::vector<std::pair<const char*, std::pair<const char*, const char*>>> keys = {
+        {"compareItem", {"popup_goto", "IK_Tab"}},
+        {"compareItem", {"sort_list", "IK_Tab"}},
+        {"compareItem", {"world_map_menu_jump_to_player", "IK_Tab"}},
+        {"compareItem", {"toggle_comparison_tooltip", "IK_Tab"}},
+        {"confirm", {"UI_vehicle_customization_confirm_Button", "IK_Enter"}},
+        {"confirm", {"UI_smart_frame_confirm_Button", "IK_Enter"}},
+        {"confirm", {"DialogConfirm", "IK_Enter"}},
+        {"confirm", {"Apply_Button", "IK_Enter"}},
+        {"confirm", {"Minigame_Action", "IK_Enter"}},
+        {"confirm", {"system_notification_confirm", "IK_Enter"}},
+        {"confirm", {"system_accept_eula", "IK_Enter"}},
+        {"confirm", {"proceed_popup", "IK_Enter"}},
+        {"confirm", {"click_popup", "IK_Enter"}},
+        {"confirm", {"menu_click", "IK_Enter"}},
+        {"confirm", {"glam_select_color", "IK_Enter"}},
+        {"confirm", {"minigame_select", "IK_Enter"}},
+        {"contextHelp", {"UI_ContextHelp", "IK_U"}},
+        {"disassembleItem", {"disassemble_item", "IK_Z"}},
+        {"dropItem", {"drop_item", "IK_X"}},
+        {"equipVisuals", {"equip_visuals", "IK_V"}},
+        {"equipVisuals", {"preview_item", "IK_V"}},
+        {"equipVisuals", {"favourite_item", "IK_V"}},
+        {"equipVisuals", {"buy_cyberware_glam", "IK_V"}},
+        {"mapTrack", {"world_map_menu_track_waypoint", "IK_RightMouse"}},
+        {"mapTrack", {"track", "IK_Space"}},
+        {"sellJunk", {"sell_junk", "IK_G"}},
+        {"unequipItem", {"UI_vehicle_customization_fake_slider_value_Button", "IK_MiddleMouse"}},
+        {"unequipItem", {"world_map_menu_zoom_to_mappin", "IK_MiddleMouse"}},
+        {"unequipItem", {"unequip_item", "IK_MiddleMouse"}},
+        {"unequipItem", {"sell_perk", "IK_MiddleMouse"}},
+        {"filterNavUp", {"world_map_filter_navigation_up", "IK_Z"}},
+        {"filterNavDown", {"world_map_filter_navigation_down", "IK_X"}},
+        {"filterNavToggle", {"world_map_menu_toggle_custom_filter", "IK_C"}}};
+    return keys;
+}
+
+// Gives the keys the names above, unless the mappings already carry the name (the game's own, or NMHK's).
+void AddHardCodedNames(pugi::xml_document& aDoc)
+{
+    std::set<std::string> present;
+    std::map<std::string, pugi::xml_node> byName;
+    for (auto mapping : aDoc.child("bindings").children("mapping"))
+    {
+        byName.emplace(mapping.attribute("name").as_string(), mapping);
+        for (auto button : mapping.children("button"))
+        {
+            if (auto ui = button.attribute("overridableUI"))
+                present.insert(ui.as_string());
+        }
+    }
+    for (const auto& [name, where] : HardCodedKeys())
+    {
+        if (present.contains(name))
+            continue;
+        auto mapping = byName.find(where.first);
+        if (mapping == byName.end())
+            continue;
+        for (auto button : mapping->second.children("button"))
+        {
+            if (std::string(button.attribute("id").as_string()) == where.second && !button.attribute("overridableUI"))
+            {
+                button.append_attribute("overridableUI") = name;
+                break;
+            }
+        }
+    }
+}
+
 // overridableUI -> first keyboard button id, in document order. A mapping with a single key
 // and no overridableUI is listed by its own name, it gets one in the copy the game reads.
 // aCopies receives the mappings whose controller buttons come from a scheme's copy.
@@ -122,6 +228,7 @@ std::map<std::string, Button> ReadMappings(const fs::path& aFile, const std::str
     pugi::xml_document doc;
     if (!doc.load_file(aFile.c_str()))
         return out;
+    AddHardCodedNames(doc);
 
     auto copies = SchemeCopies(doc, aScheme);
     std::map<std::string, pugi::xml_node> byName;
@@ -475,8 +582,7 @@ Uses ReadUses(const fs::path& aContexts)
     return out;
 }
 
-// Menu navigation: moving between items, confirming, going back, switching tabs or options. Rebinding
-// these on a controller changes how every menu is used, so they get no controller entry.
+// Menu navigation and recovery controls stay fixed on a controller.
 bool IsNavigation(const Use& aUse)
 {
     static const std::set<std::string> navigation = {
@@ -488,7 +594,8 @@ bool IsNavigation(const Use& aUse)
         "popup_next", "option_switch_prev", "option_switch_next", "option_switch_prev_settings",
         "option_switch_next_settings", "sub_option_switch_prev", "sub_option_switch_next", "mod_prior_menu",
         "mod_next_menu", "mod_prior_page", "mod_next_page", "ChoiceScrollUp", "ChoiceScrollDown",
-        "PhotoMode_Left_Button", "PhotoMode_Right_Button", "PhotoMode_Prior_Menu", "PhotoMode_Next_Menu"};
+        "PhotoMode_Left_Button", "PhotoMode_Right_Button", "PhotoMode_Prior_Menu", "PhotoMode_Next_Menu",
+        "controller_settings", "restore_default_settings"};
     for (const auto& a : aUse.actions)
     {
         if (navigation.contains(a))
@@ -497,8 +604,7 @@ bool IsNavigation(const Use& aUse)
     return false;
 }
 
-// Contexts of full-screen menus and popups. A mapping used only there gets no controller entry:
-// one keyboard key covers unrelated buttons there (Unequip Item: R3 zooms the map, Y sells a perk).
+// Keep menu mappings separate so existing controller entries keep their names and scope.
 bool IsMenuOnly(const Use& aUse)
 {
     static const std::set<std::string> menus = {
@@ -554,31 +660,58 @@ struct PadGroup
     std::string button;
     std::vector<std::string> mappings;
     std::set<std::string> contexts;
-    bool navigation = false;
 };
+
+// Menu actions whose controller button can be rebound. Everything else in the menus (confirm, back, buy,
+// craft, equip, select, popups, tabs, sub menus, vehicle paint, photo frame, quantities, videos, system and
+// title screens, save management) stays fixed.
+bool MenuPadAllowed(const std::string& aMapping)
+{
+    static const std::set<std::string> allowed = {
+        "equip_visuals", "preview_item", "favourite_item", "drop_item", "disassemble_item", "sell_junk",
+        "toggle_comparison_tooltip", "unequip_item", "track", "world_map_menu_track_waypoint",
+        "world_map_menu_cycle_filter_prev", "world_map_menu_cycle_filter_next", "world_map_filter_navigation_up",
+        "world_map_filter_navigation_down", "world_map_menu_toggle_custom_filter"};
+    return allowed.contains(aMapping);
+}
+
+// Options of the game (and NMHK's) that get no controller entry: gameplay actions they name were never listed,
+// the rest are fixed menu or interaction buttons.
+bool NoPadEntry(const std::string& aOption)
+{
+    static const std::set<std::string> none = {"confirm", "cancelSelection", "choice2", "contextHelp", "cycleObjectives"};
+    return none.contains(aOption);
+}
 
 // The controller buttons of an action that are in use during play, one group per button. A mapping's
 // button that an earlier action took (aClaimed) is left to that action.
 std::vector<PadGroup> PadGroups(const Button& aButton, const Uses& aUses,
-                                std::set<std::pair<std::string, std::string>>& aClaimed, bool aShowNavigation)
+                                std::set<std::pair<std::string, std::string>>& aClaimed, bool aMenuOnly)
 {
     std::vector<PadGroup> out;
     for (const auto& [padId, mappings] : aButton.pads)
     {
         PadGroup group{padId};
+        bool locked = false;
         for (const auto& m : mappings)
         {
             auto use = aUses.find(m);
             if (use == aUses.end() || aClaimed.contains({m, padId}))
                 continue;
-            bool navigation = IsNavigation(use->second) || IsMenuOnly(use->second);
-            if (navigation && !aShowNavigation)
+            if (IsMenuOnly(use->second) != aMenuOnly)
                 continue;
-            group.navigation = group.navigation || navigation;
+            if (aMenuOnly && !MenuPadAllowed(m))
+                continue;
+            if (IsNavigation(use->second))
+            {
+                locked = aMenuOnly;
+                continue;
+            }
             group.mappings.push_back(m);
             group.contexts.insert(use->second.contexts.begin(), use->second.contexts.end());
         }
-        if (group.mappings.empty())
+        // A menu button used for navigation stays locked for this keyboard entry.
+        if (locked || group.mappings.empty())
             continue;
         for (const auto& m : group.mappings)
             aClaimed.insert({m, padId});
@@ -614,16 +747,26 @@ std::vector<std::string> Suffixes(const std::vector<PadGroup>& aGroups)
 
 // Vanilla controller buttons that do something else than their keyboard entry's label says, by
 // the mapping they are in.
-std::string OwnLabel(const PadGroup& aGroup)
+struct PadLabel
 {
-    static const std::map<std::string, std::string> labels = {
-        {"CancelCharging_Button", "Cancel Gadget Throw"},
-        {"PickUpBodyFromTakedown_Button", "Pick Up Body (After Takedown)"},
-        {"NotificationLvlup_Button", "Open Level-Up Notification"},
-        {"ExitPhotoModeButton", "Exit Photo Mode"},
-        {"ResetCurrentLightButton", "Reset Light (Photo Mode)"},
-        {"LockCameraButton", "Lock Camera (Photo Mode)"},
-        {"OpenQuickHackPanel_Button", "Open Quickhacks (Scanner)"}};
+    std::string text;
+    std::vector<std::string> keys;
+};
+
+PadLabel OwnLabel(const PadGroup& aGroup)
+{
+    static const std::map<std::string, PadLabel> labels = {
+        {"CancelCharging_Button", {"Cancel Gadget Throw"}},
+        {"PickUpBodyFromTakedown_Button", {"Pick Up Body (After Takedown)"}},
+        {"NotificationLvlup_Button", {"Open Level-Up Notification"}},
+        {"ExitPhotoModeButton", {"Exit Photo Mode"}},
+        {"ResetCurrentLightButton", {"Reset Light (Photo Mode)"}},
+        {"LockCameraButton", {"Lock Camera (Photo Mode)"}},
+        {"OpenQuickHackPanel_Button", {"Open Quickhacks (Scanner)"}},
+        {"track", {"% (Journal)", {"UI-UserActions-TrackQuest"}}},
+        {"world_map_menu_track_waypoint", {"%", {"UI-Settings-ButtonMappings-Actions-MapTrack"}}},
+        {"world_map_menu_cycle_filter_prev", {"%", {"UI-Settings-ButtonMappings-Actions-MapPrevFilter"}}},
+        {"world_map_menu_cycle_filter_next", {"%", {"UI-Settings-ButtonMappings-Actions-MapNextFilter"}}}};
     for (const auto& m : aGroup.mappings)
     {
         if (auto it = labels.find(m); it != labels.end())
@@ -645,18 +788,6 @@ bool IsShareVariant(const std::string& aName)
     return IsHoldVariant(aName) || aName == "visionToggle";
 }
 
-bool ShowNavigation()
-{
-#ifdef MKM_TEST
-    char* value = nullptr;
-    std::size_t length = 0;
-    bool on = _dupenv_s(&value, &length, "MKM_SHOW_NAV") == 0 && value && value[0] == '1';
-    free(value);
-    return on;
-#else
-    return false;
-#endif
-}
 } // namespace
 
 bool Keybinds::IsModGroup(const std::string& aGroup)
@@ -793,7 +924,6 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
             uses[copy].contexts.insert(from.contexts.begin(), from.contexts.end());
         }
     }
-    bool showNavigation = ShowNavigation();
     // Where a keyboard entry acts, as for the controller entries: empty on foot, else "Vehicle", "Menus", ...
     auto PlaceOf = [&](const std::vector<std::string>& aMappings) {
         std::set<std::string> contexts;
@@ -808,56 +938,66 @@ std::vector<Keybinds::Action> Keybinds::Collect(const fs::path& aRoot, const std
     std::set<std::pair<std::string, std::string>> claimed;
     auto padEntries = [&](const Button& aButton, const std::string& aName, const Action& aBase) {
         std::vector<Action> out;
-        auto groups = PadGroups(aButton, uses, claimed, showNavigation);
-        // Groups with a label of their own; the others are told apart by where they apply.
-        std::vector<std::string> own;
-        std::vector<PadGroup> rest;
-        for (const auto& g : groups)
-        {
-            own.push_back(groups.size() > 1 ? OwnLabel(g) : std::string());
-            if (own.back().empty())
-                rest.push_back(g);
-        }
-        auto restSuffixes = Suffixes(rest);
-        std::vector<std::string> suffixes;
-        for (std::size_t i = 0, r = 0; i < groups.size(); ++i)
-            suffixes.push_back(own[i].empty() ? restSuffixes[r++] : std::string());
-        for (std::size_t i = 0; i < groups.size(); ++i)
-        {
-            Action p = aBase;
-            p.name = kPadPrefix + aName + (groups.size() > 1 ? "_" + groups[i].button.substr(7) : "");
-            p.defaultKey = groups[i].button;
-            p.mappings = groups[i].mappings;
-            p.pad = true;
-            p.place = Category(groups[i].contexts);
-            for (const auto& [mapping, copy] : copies)
-                p.scheme = p.scheme || std::find(p.mappings.begin(), p.mappings.end(), copy) != p.mappings.end();
-            if (!own[i].empty())
+        if (NoPadEntry(aName))
+            return out;
+        auto existing = PadGroups(aButton, uses, claimed, false);
+        auto menus = PadGroups(aButton, uses, claimed, true);
+        // Label and name the old groups on their own, exactly as before.
+        auto append = [&](const std::vector<PadGroup>& groups, bool menu) {
+            // Groups with a label of their own; the others are told apart by where they apply.
+            std::vector<PadLabel> own;
+            std::vector<PadGroup> rest;
+            for (const auto& g : groups)
             {
-                p.label = own[i];
-                p.labelKey.clear();
-                p.labelKeys.clear();
+                own.push_back(groups.size() > 1 || menu ? OwnLabel(g) : PadLabel{});
+                if (own.back().text.empty())
+                    rest.push_back(g);
             }
-            std::string suffix = suffixes[i];
-            if (groups[i].navigation)
-                suffix += std::string(suffix.empty() ? "" : ", ") + "NAV";
-            if (!suffix.empty())
+            auto restSuffixes = Suffixes(rest);
+            std::vector<std::string> suffixes;
+            for (std::size_t i = 0, r = 0; i < groups.size(); ++i)
+                suffixes.push_back(own[i].text.empty() ? restSuffixes[r++] : std::string());
+            for (std::size_t i = 0; i < groups.size(); ++i)
             {
-                if (!p.labelKeys.empty() || p.labelKey.rfind("LocKey#", 0) == 0)
+                Action p = aBase;
+                p.name = kPadPrefix + aName + (menu && !existing.empty() ? "_Menu_" + groups[i].button.substr(7) :
+                    groups.size() > 1 ? "_" + groups[i].button.substr(7) : "");
+                p.defaultKey = groups[i].button;
+                p.mappings = groups[i].mappings;
+                p.pad = true;
+                p.place = Category(groups[i].contexts);
+                for (const auto& [mapping, copy] : copies)
+                    p.scheme = p.scheme || std::find(p.mappings.begin(), p.mappings.end(), copy) != p.mappings.end();
+                if (!own[i].text.empty())
                 {
-                    // The game fills translated parts into a format like "% / %".
-                    p.labelFormat = (p.labelKeys.empty() ? std::string("%") : p.labelKey) + " (" + suffix + ")";
-                    if (p.labelKeys.empty())
-                        p.labelKeys.push_back(p.labelKey);
-                }
-                else
-                {
-                    p.label += " (" + suffix + ")";
+                    p.label = own[i].text;
                     p.labelKey.clear();
+                    p.labelFormat.clear();
+                    p.labelKeys = own[i].keys;
+                    if (!p.labelKeys.empty())
+                        p.labelKey = own[i].text;
                 }
+                std::string suffix = suffixes[i];
+                if (!suffix.empty())
+                {
+                    if (!p.labelKeys.empty() || p.labelKey.rfind("LocKey#", 0) == 0)
+                    {
+                        // The game fills translated parts into a format like "% / %".
+                        p.labelFormat = (p.labelKeys.empty() ? std::string("%") : p.labelKey) + " (" + suffix + ")";
+                        if (p.labelKeys.empty())
+                            p.labelKeys.push_back(p.labelKey);
+                    }
+                    else
+                    {
+                        p.label += " (" + suffix + ")";
+                        p.labelKey.clear();
+                    }
+                }
+                out.push_back(std::move(p));
             }
-            out.push_back(std::move(p));
-        }
+        };
+        append(existing, false);
+        append(menus, true);
         return out;
     };
 
@@ -1117,6 +1257,7 @@ std::string Keybinds::MarkRebindable(const fs::path& aMerged, const std::vector<
     pugi::xml_document doc;
     if (!doc.load_file(aMerged.c_str()))
         return {};
+    AddHardCodedNames(doc);
     std::map<std::string, std::string> aCombos;
     for (const auto& [name, key] : aSaved)
     {
@@ -1288,6 +1429,40 @@ std::vector<Keybinds::ActionCombo> Keybinds::ComboActions(const fs::path& aConte
         }
     }
     return out;
+}
+
+std::string Keybinds::AddHardCodedOptions(const std::string& aOptions)
+{
+    auto data = json::parse(aOptions, nullptr, false);
+    if (data.is_discarded() || !data.contains("options") || !data["options"].is_array())
+        return aOptions;
+    std::set<std::string> present;
+    for (const auto& list : data["options"])
+    {
+        if (!list.contains("options"))
+            continue;
+        for (const auto& o : list["options"])
+            present.insert(list.value("group_name", "") + "|" + o.value("name", ""));
+    }
+    bool changed = false;
+    for (const auto& h : HardCodedOptions())
+    {
+        if (present.contains(std::string(h.group) + "|" + h.name))
+            continue;
+        json option = {{"name", h.name}, {"display_name", h.label}, {"order", h.order}, {"is_input", true}};
+        if (!h.keys.empty())
+            option["display_name_keys"] = std::vector<std::string>(h.keys.begin(), h.keys.end());
+        for (auto& list : data["options"])
+        {
+            if (list.value("group_name", "") == h.group && list.contains("options"))
+            {
+                list["options"].push_back(option);
+                changed = true;
+                break;
+            }
+        }
+    }
+    return changed ? data.dump(4) : aOptions;
 }
 
 std::string Keybinds::MergeOptions(const std::string& aBaseOptions, const std::vector<Action>& aActions)

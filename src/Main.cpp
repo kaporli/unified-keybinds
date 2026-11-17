@@ -152,6 +152,7 @@ bool Generate(const fs::path& aBase)
         Log("Could not read " + aBase.string());
         return false;
     }
+    base = Keybinds::AddHardCodedOptions(base);
 
     bool collected = false;
     {

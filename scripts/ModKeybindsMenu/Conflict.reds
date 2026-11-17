@@ -10,13 +10,10 @@ module ModKeybindsMenu
 private let m_modKeybindsConflictNames: array<CName>;
 
 @addField(SettingsMainGameController)
-private let m_modKeybindsConflictLists: array<String>; // per name: side panel rows of the other entries
-
-@addField(SettingsMainGameController)
 private let m_modKeybindsSharedNames: array<CName>;
 
 @addField(SettingsMainGameController)
-private let m_modKeybindsSharedLists: array<String>; // per name: side panel rows of the other entries
+private let m_modKeybindsSharedLists: array<String>; // per name: the other entries' names, comma separated
 
 @addField(SettingsMainGameController)
 private let m_modKeybindsConflictRaw: array<String>; // per name: the other entries' names, comma separated
@@ -116,7 +113,6 @@ private func ModKeybindsCheckConflicts() -> String {
   }
   this.m_modKeybindsConflictKeys = current;
   ArrayClear(this.m_modKeybindsConflictNames);
-  ArrayClear(this.m_modKeybindsConflictLists);
   ArrayClear(this.m_modKeybindsConflictRaw);
   ArrayClear(this.m_modKeybindsSharedNames);
   ArrayClear(this.m_modKeybindsSharedLists);
@@ -135,7 +131,7 @@ private func ModKeybindsCheckConflicts() -> String {
     ArrayPush(lists, conflicts);
     if StrLen(shared) > 0 {
       ArrayPush(this.m_modKeybindsSharedNames, names[i]);
-      ArrayPush(this.m_modKeybindsSharedLists, this.ModKeybindsRows(shared, names, vars));
+      ArrayPush(this.m_modKeybindsSharedLists, shared);
     }
     i += 1;
   }
@@ -147,7 +143,6 @@ private func ModKeybindsCheckConflicts() -> String {
   while i < ArraySize(lists) && i < ArraySize(vars) {
     if StrLen(lists[i]) > 0 {
       ArrayPush(this.m_modKeybindsConflictNames, names[i]);
-      ArrayPush(this.m_modKeybindsConflictLists, this.ModKeybindsRows(lists[i], names, vars));
       ArrayPush(this.m_modKeybindsConflictRaw, lists[i]);
       // For the popup: this entry under its key, when the key is of the device in view.
       if Equals(StrBeginsWith(NameToString(keys[i]), "IK_Pad"), this.m_modKeybindsPadMode) {
@@ -199,24 +194,50 @@ private func ModKeybindsCheckConflicts() -> String {
   return lines;
 }
 
-// Side panel rows for the entries in a comma list of names: the action in white, its section in grey
-// ("Mod: " left out), one per line. A small empty line before each row spaces them like the popup's.
+// How many entries of a comma list of names are listed.
 @addMethod(SettingsMainGameController)
-private func ModKeybindsRows(list: String, names: array<CName>, vars: array<ref<ConfigVarName>>) -> String {
+private func ModKeybindsRowCount(list: String, names: array<CName>) -> Int32 {
+  let count = 0;
+  let others = StrSplit(list, ",");
+  for other in others {
+    if ArrayFindFirst(names, StringToName(other)) >= 0 {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+// Side panel rows for the first entries of a comma list of names (at most limit lines): the action in
+// white, its section in grey ("Mod: " left out), one per line. A small empty line before each row spaces
+// them like the popup's. The rest becomes a "+N more" note, as in the popup.
+@addMethod(SettingsMainGameController)
+private func ModKeybindsRows(list: String, names: array<CName>, vars: array<ref<ConfigVarName>>, limit: Int32) -> String {
   let rows = "";
+  let shown = 0;
+  let total = this.ModKeybindsRowCount(list, names);
+  let room = total > limit ? limit - 1 : limit;
   let others = StrSplit(list, ",");
   for other in others {
     let j = ArrayFindFirst(names, StringToName(other));
-    if j >= 0 {
+    if j >= 0 && shown < room {
       let section = GetLocalizedTextByKey(vars[j].GetGroup().GetDisplayName());
       if StrBeginsWith(section, "Mod: ") {
         section = StrMid(section, 5);
       }
-      rows += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.White\">" + ModKeybindsEntryLabel(vars[j], false) + "</>";
-      if StrLen(section) > 0 {
+      // One line per row: the section is left out when the row would wrap, a long name is cut.
+      let label = ModKeybindsEntryLabel(vars[j], false);
+      if StrLen(label) > 36 {
+        label = StrLeft(label, 33) + "...";
+      }
+      rows += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.White\">" + label + "</>";
+      if StrLen(section) > 0 && StrLen(label) + StrLen(section) + 2 <= 36 {
         rows += "  <Rich color=\"MainColors.Grey\">" + section + "</>";
       }
+      shown += 1;
     }
+  }
+  if total > shown {
+    rows += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.Grey\">+" + IntToString(total - shown) + " more</>";
   }
   return rows;
 }
@@ -295,15 +316,60 @@ private func ModKeybindsConflictLine(v: ref<ConfigVarName>) -> String {
   let icon = ModKeybindsKeyIcon(v);
   let text = "";
   let i = ArrayFindFirst(this.m_modKeybindsConflictNames, name);
-  if i >= 0 {
-    text = icon + "  <Rich color=\"MainColors.Red\">CONFLICTS WITH</>" + this.m_modKeybindsConflictLists[i];
-  }
   let j = ArrayFindFirst(this.m_modKeybindsSharedNames, name);
-  if j >= 0 {
-    text += (StrLen(text) > 0 ? "\n\n" : "") + icon + "  <Rich " + this.m_descriptionWarningRichColor + ">IS SHARED WITH</>"
-      + this.m_modKeybindsSharedLists[j];
-  }
   let count = ArraySize(this.m_modKeybindsPanelKeys);
+  // The panel ends at the list's bottom line and has no scrolling, so everything shares a budget in
+  // pixels (about 500 below the description at 1080p): a list row is 32, a list heading 36, the gap
+  // between lists 55, the "all conflicts" block 95 + 40 a row (+35 for its "more" line). That block
+  // keeps 2 rows, the rest goes to the two lists, and a list that doesn't fit ends in "+N more".
+  let vars = this.ModKeybindsKeyVars();
+  let names: array<CName>;
+  for v in vars {
+    ArrayPush(names, v.GetName());
+  }
+  let nA = i >= 0 ? this.ModKeybindsRowCount(this.m_modKeybindsConflictRaw[i], names) : 0;
+  let nB = j >= 0 ? this.ModKeybindsRowCount(this.m_modKeybindsSharedLists[j], names) : 0;
+  let budget = 500;
+  if count > 0 {
+    budget -= 95 + 40 * (count > 2 ? 2 : count) + (count > 2 ? 35 : 0);
+  }
+  budget -= (nA > 0 ? 36 : 0) + (nB > 0 ? 36 : 0) + (nA > 0 && nB > 0 ? 55 : 0);
+  budget = budget / 32;
+  let limitA = budget;
+  let limitB = budget;
+  if nA > 0 && nB > 0 && nA + nB > budget {
+    limitA = budget / 2;
+    if nB < budget - limitA {
+      limitA = budget - nB;
+    }
+    limitB = budget - limitA;
+    if nA < limitA {
+      limitB += limitA - nA;
+    }
+  }
+  if limitA < 2 {
+    limitA = 2;
+  }
+  if limitB < 2 {
+    limitB = 2;
+  }
+  let used = 0;
+  if nA > 0 {
+    text = icon + "  <Rich color=\"MainColors.Red\">CONFLICTS WITH</>" + this.ModKeybindsRows(this.m_modKeybindsConflictRaw[i], names, vars, limitA);
+    used += 36 + 32 * (nA > limitA ? limitA : nA);
+  }
+  if nB > 0 {
+    text += (StrLen(text) > 0 ? "\n\n" : "") + icon + "  <Rich " + this.m_descriptionWarningRichColor + ">IS SHARED WITH</>"
+      + this.ModKeybindsRows(this.m_modKeybindsSharedLists[j], names, vars, limitB);
+    used += 36 + 32 * (nB > limitB ? limitB : nB) + (nA > 0 ? 55 : 0);
+  }
+  let panelRows = (500 - used - 95) / 40;
+  if panelRows > 4 {
+    panelRows = 4;
+  }
+  if panelRows < 2 {
+    panelRows = 2;
+  }
   if count > 0 {
     text += (StrLen(text) > 0 ? "\n\n" : "") + "<Rich color=\"MainColors.Grey\">________________________</>\n\n"
       + "<Rich color=\"MainColors.Grey\" size=\"30\">ALL CONFLICTS (" + IntToString(count) + (count == 1 ? " KEY)" : " KEYS)") + "</>";
@@ -324,7 +390,7 @@ private func ModKeybindsConflictLine(v: ref<ConfigVarName>) -> String {
     }
     let shown = 0;
     for at in order {
-      if shown < 4 {
+      if shown < panelRows {
         // One line per key: the second name moves into "+N more" when both don't fit, and a single long
         // name is cut.
         let row = this.m_modKeybindsPanelRows[at];
@@ -345,8 +411,8 @@ private func ModKeybindsConflictLine(v: ref<ConfigVarName>) -> String {
       }
       shown += 1;
     }
-    if count > 4 {
-      text += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.Grey\">+" + IntToString(count - 4) + " more keys</>";
+    if count > panelRows {
+      text += "\n<Rich size=\"12\"> </>\n<Rich color=\"MainColors.Grey\">+" + IntToString(count - panelRows) + " more keys</>";
     }
   }
   return text;
