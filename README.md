@@ -20,21 +20,11 @@ Images: keyboard left, controller right.
 
   ![Entries for hard-coded keys](screenshots/new-entries.png)
 
-  ![Inventory hints](screenshots/inventory-hints.png)
-
 - **Controller rebinding**, vanilla and mod, per control scheme (Classic, Dynamic, Alternative). The menu shows buttons while you use a controller, keys while you use the keyboard.
-
-  ![Control Scheme rows](screenshots/control-scheme-shared.png)
 
 - **Key combinations** on every entry: hold one key or button, press another (*"Ctrl + K"*, *"LB + A"*). On-screen hints show the whole combination.
 
   ![A combination](screenshots/combination.png)
-
-  ![Waiting for a key or button](screenshots/prompt.png)
-
-  ![The restart popup](screenshots/restart-popup.png)
-
-  ![The heal item hint on a combination](screenshots/combination-hint.png)
 
 - **Tap or hold on one key**: a (Hold) action shares its key with another action. Tap for one, hold for the other, for example Crouch (Hold) and Dodge/Dash.
 
